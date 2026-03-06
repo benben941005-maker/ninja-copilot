@@ -8,106 +8,106 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Ninja Co-Pilot</title>
 <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
-    --red: #D0021B;
-    --dark-red: #8B0000;
-    --black: #0A0A0A;
-    --dark: #111111;
-    --card: #1A1A1A;
-    --border: #2A2A2A;
-    --text: #F0F0F0;
-    --muted: #777;
-    --green: #00C853;
-    --blue: #2196F3;
+    --red:#D0021B; --dark-red:#8B0000; --black:#0A0A0A;
+    --dark:#111111; --card:#1A1A1A; --border:#2A2A2A;
+    --text:#F0F0F0; --muted:#777; --green:#00C853; --blue:#2196F3;
+    --purple:#9C27B0;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
-  body {
-    background: var(--black);
-    color: var(--text);
-    font-family: 'Inter', sans-serif;
-    height: 100dvh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
+  body { background:var(--black); color:var(--text); font-family:'Inter',sans-serif; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
 
   /* HEADER */
-  .header {
-    background: linear-gradient(135deg, var(--dark-red), var(--red));
-    padding: 14px 18px 14px;
-    display: flex; align-items: center; gap: 10px;
-    flex-shrink: 0;
-    position: relative; overflow: hidden;
-  }
+  .header { background:linear-gradient(135deg,var(--dark-red),var(--red)); padding:12px 16px; display:flex; align-items:center; gap:10px; flex-shrink:0; position:relative; overflow:hidden; }
   .header::after { content:''; position:absolute; top:-40px; right:-20px; width:130px; height:130px; background:rgba(255,255,255,0.05); border-radius:50%; }
-  .ninja-icon { font-size: 26px; z-index:1; }
-  .header-text { z-index:1; }
-  .brand { font-family:'Rajdhani',sans-serif; font-size:20px; font-weight:700; letter-spacing:1px; line-height:1; }
+  .ninja-icon { font-size:24px; z-index:1; }
+  .header-text { z-index:1; flex:1; }
+  .brand { font-family:'Rajdhani',sans-serif; font-size:19px; font-weight:700; letter-spacing:1px; line-height:1; }
   .brand span { opacity:0.65; font-weight:500; }
-  .subtitle { font-size:9px; opacity:0.65; letter-spacing:2.5px; text-transform:uppercase; }
-  .status-pill {
-    margin-left: auto; z-index:1;
-    background: rgba(0,200,83,0.15);
-    border: 1px solid rgba(0,200,83,0.3);
-    border-radius: 20px; padding: 4px 10px;
-    display: flex; align-items: center; gap: 5px;
-    font-size: 11px; color: var(--green);
-  }
-  .status-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:blink 2s infinite; }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .subtitle { font-size:9px; opacity:0.65; letter-spacing:2px; text-transform:uppercase; }
+  .header-btns { display:flex; gap:6px; z-index:1; }
+  .hbtn { background:rgba(255,255,255,0.15); border:none; border-radius:8px; padding:6px 9px; color:white; font-size:14px; cursor:pointer; transition:all 0.2s; }
+  .hbtn:active { background:rgba(255,255,255,0.3); }
+  .hbtn.on { background:rgba(0,200,83,0.4); }
 
-  /* LANGUAGE SELECTOR */
-  .lang-bar { padding:8px 14px 4px; flex-shrink:0; }
-  .lang-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px; }
-  .lang-scroll { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding-bottom:2px; }
-  .lang-scroll::-webkit-scrollbar { display:none; }
-  .lang-btn {
-    background:var(--card); border:1px solid var(--border);
-    border-radius:20px; padding:5px 12px;
-    font-size:12px; cursor:pointer; white-space:nowrap;
-    flex-shrink:0; transition:all 0.15s; color:var(--muted);
+  /* SETTINGS DRAWER */
+  .settings-drawer {
+    background:var(--card); border-bottom:1px solid var(--border);
+    padding:0; max-height:0; overflow:hidden;
+    transition:max-height 0.3s ease, padding 0.3s ease;
+    flex-shrink:0;
   }
-  .lang-btn.active {
-    background:rgba(208,2,27,0.2);
-    border-color:var(--red);
-    color:var(--text);
-    font-weight:500;
+  .settings-drawer.open { max-height:200px; padding:12px 16px; }
+  .settings-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .settings-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; width:80px; flex-shrink:0; }
+
+  /* MIC LANGUAGE — auto detect badge */
+  .auto-badge {
+    background:rgba(33,150,243,0.15); border:1px solid rgba(33,150,243,0.3);
+    border-radius:20px; padding:5px 14px; font-size:12px; color:var(--blue);
+    display:flex; align-items:center; gap:6px;
   }
-  .lang-btn:active { transform:scale(0.94); }
+  .auto-dot { width:6px; height:6px; border-radius:50%; background:var(--blue); animation:blink 1.5s infinite; }
+
+  /* VOICE GENDER */
+  .voice-options { display:flex; gap:8px; }
+  .voice-opt {
+    flex:1; background:var(--dark); border:1px solid var(--border);
+    border-radius:12px; padding:8px 12px; cursor:pointer;
+    text-align:center; transition:all 0.15s;
+  }
+  .voice-opt.active { background:rgba(208,2,27,0.2); border-color:var(--red); }
+  .voice-opt-icon { font-size:20px; display:block; margin-bottom:2px; }
+  .voice-opt-label { font-size:11px; color:var(--muted); }
+  .voice-opt.active .voice-opt-label { color:var(--text); }
+
+  /* MIC LANG SELECTOR (shown in settings) */
+  .mic-lang-scroll { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; flex:1; }
+  .mic-lang-scroll::-webkit-scrollbar { display:none; }
+  .mic-lang-btn { background:var(--dark); border:1px solid var(--border); border-radius:16px; padding:4px 10px; font-size:12px; cursor:pointer; white-space:nowrap; flex-shrink:0; color:var(--muted); transition:all 0.15s; }
+  .mic-lang-btn.active { background:rgba(33,150,243,0.2); border-color:var(--blue); color:var(--text); }
 
   /* CHIPS */
   .chips-bar { padding:6px 14px 4px; flex-shrink:0; }
-  .chips-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:6px; }
   .chips { display:flex; gap:7px; overflow-x:auto; scrollbar-width:none; }
   .chips::-webkit-scrollbar { display:none; }
-  .chip {
-    background:var(--card); border:1px solid var(--border);
-    border-radius:20px; padding:6px 13px;
-    font-size:12px; cursor:pointer; white-space:nowrap;
-    flex-shrink:0; transition:all 0.15s; color:var(--text);
-  }
-  .chip:active { background:var(--red); border-color:var(--red); transform:scale(0.96); }
+  .chip { background:var(--card); border:1px solid var(--border); border-radius:20px; padding:5px 12px; font-size:12px; cursor:pointer; white-space:nowrap; flex-shrink:0; color:var(--text); }
+  .chip:active { background:var(--red); border-color:var(--red); }
 
   /* CHAT */
-  .chat { flex:1; overflow-y:auto; padding:12px 14px 14px; display:flex; flex-direction:column; gap:11px; }
-  .msg { max-width:90%; animation:pop 0.25s ease; }
+  .chat { flex:1; overflow-y:auto; padding:10px 14px 12px; display:flex; flex-direction:column; gap:10px; }
+  .msg { max-width:92%; animation:pop 0.25s ease; }
   @keyframes pop { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
   .msg.ai { align-self:flex-start; }
   .msg.user { align-self:flex-end; }
-  .msg-label { font-size:10px; letter-spacing:1px; text-transform:uppercase; opacity:0.45; margin-bottom:3px; padding: 0 3px; }
+  .msg-label { font-size:10px; letter-spacing:1px; text-transform:uppercase; opacity:0.45; margin-bottom:3px; padding:0 3px; }
   .msg.user .msg-label { text-align:right; }
   .bubble { padding:11px 14px; border-radius:16px; font-size:14px; line-height:1.55; }
   .msg.ai .bubble { background:var(--card); border:1px solid var(--border); border-bottom-left-radius:3px; }
   .msg.user .bubble { background:linear-gradient(135deg,var(--red),var(--dark-red)); border-bottom-right-radius:3px; }
-  .msg-img { max-width:100%; border-radius:12px; margin-bottom:6px; display:block; max-height:200px; object-fit:cover; border:1px solid var(--border); }
+  .msg-img { max-width:100%; border-radius:12px; margin-bottom:6px; display:block; max-height:180px; object-fit:cover; border:1px solid var(--border); }
+
+  /* LANG DETECTED PILL */
+  .lang-detected { display:inline-flex; align-items:center; gap:4px; background:rgba(33,150,243,0.1); border:1px solid rgba(33,150,243,0.2); border-radius:12px; padding:2px 8px; font-size:10px; color:var(--blue); margin-bottom:6px; }
+
+  /* MAP CARD */
+  .map-card { margin-top:10px; border-radius:14px; overflow:hidden; border:1px solid var(--border); }
+  .map-hdr { background:rgba(33,150,243,0.12); border-bottom:1px solid rgba(33,150,243,0.2); padding:8px 12px; display:flex; align-items:center; gap:8px; }
+  .map-title { font-size:12px; color:var(--blue); font-weight:500; flex:1; }
+  .map-open-btn { background:var(--blue); border:none; border-radius:8px; padding:4px 10px; color:white; font-size:11px; cursor:pointer; }
+  .map-container { height:210px; width:100%; }
+  .map-footer { background:var(--card); padding:7px 12px; font-size:11px; color:var(--muted); }
+
   .typing-bubble { display:flex; gap:4px; padding:12px 14px; background:var(--card); border:1px solid var(--border); border-radius:16px; border-bottom-left-radius:3px; width:fit-content; }
   .typing-bubble span { width:6px; height:6px; background:var(--muted); border-radius:50%; animation:bounce 1.2s infinite; }
   .typing-bubble span:nth-child(2){animation-delay:0.2s} .typing-bubble span:nth-child(3){animation-delay:0.4s}
   @keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:0.4} 40%{transform:translateY(-5px);opacity:1} }
   .scroll-end { height:1px; }
 
-  /* SPEAKING BAR */
+  /* SPEAK BAR */
   .speak-bar { display:none; align-items:center; gap:8px; padding:6px 16px; background:rgba(0,200,83,0.08); border-top:1px solid rgba(0,200,83,0.15); flex-shrink:0; }
   .speak-bar.on { display:flex; }
   .speak-bar span { font-size:11px; color:var(--green); }
@@ -129,21 +129,24 @@
   /* CONTROLS */
   .controls { background:var(--dark); border-top:1px solid var(--border); padding:10px 14px 20px; flex-shrink:0; }
   .input-row { display:flex; gap:8px; margin-bottom:9px; align-items:flex-end; }
-  .input-wrap { flex:1; position:relative; }
+  .input-wrap { flex:1; }
   .text-input { width:100%; background:var(--card); border:1px solid var(--border); border-radius:22px; padding:11px 16px; color:var(--text); font-size:14px; font-family:inherit; outline:none; resize:none; overflow:hidden; max-height:100px; line-height:1.4; }
   .text-input:focus { border-color:var(--red); }
   .text-input::placeholder { color:var(--muted); }
   .btn-row { display:flex; gap:8px; }
-  .cam-btn { width:44px; height:44px; border-radius:50%; background:var(--card); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; flex-shrink:0; transition:all 0.15s; }
-  .cam-btn:active { background:var(--blue); border-color:var(--blue); transform:scale(0.93); }
+  .cam-btn { width:44px; height:44px; border-radius:50%; background:var(--card); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; flex-shrink:0; }
   .cam-btn.has-img { background:rgba(33,150,243,0.2); border-color:var(--blue); }
-  .send-btn { width:44px; height:44px; border-radius:50%; background:var(--red); border:none; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; flex-shrink:0; transition:transform 0.1s; }
+  .send-btn { width:44px; height:44px; border-radius:50%; background:var(--red); border:none; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; flex-shrink:0; }
   .send-btn:active { transform:scale(0.9); }
   .voice-btn { flex:1; background:linear-gradient(135deg,var(--red),var(--dark-red)); border:none; border-radius:14px; padding:13px; color:white; font-family:'Rajdhani',sans-serif; font-size:17px; font-weight:700; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.2s; }
-  .voice-btn.listening { background:#0a0a0a; border:2px solid var(--red); animation:pulse-border 1s infinite; }
-  @keyframes pulse-border { 0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,0.5)} 50%{box-shadow:0 0 0 6px rgba(208,2,27,0)} }
-  .voice-btn:active { transform:scale(0.97); }
+  .voice-btn.listening { background:#0a0a0a; border:2px solid var(--red); animation:pulse 1s infinite; }
+  @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,0.5)} 50%{box-shadow:0 0 0 6px rgba(208,2,27,0)} }
   #fileInput { display:none; }
+
+  /* Leaflet dark */
+  .leaflet-container { background:#1a1a1a !important; }
+  .leaflet-tile { filter:brightness(0.7) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
+  .leaflet-control-zoom a { background:#1a1a1a; color:#f0f0f0; border-color:#333; }
 </style>
 </head>
 <body>
@@ -154,62 +157,83 @@
     <div class="brand">NINJA <span>CO-PILOT</span></div>
     <div class="subtitle">AI Senior Driver Assistant</div>
   </div>
-  <div class="status-pill">
-    <div class="status-dot"></div>
-    LIVE
+  <div class="header-btns">
+    <button class="hbtn" id="gpsBtn" onclick="toggleGPS()" title="GPS">📍</button>
+    <button class="hbtn" id="settingsBtn" onclick="toggleSettings()" title="Settings">⚙️</button>
   </div>
 </div>
 
-<!-- LANGUAGE SELECTOR -->
-<div class="lang-bar">
-  <div class="lang-label">🌏 Voice language</div>
-  <div class="lang-scroll" id="langScroll"></div>
+<!-- SETTINGS DRAWER -->
+<div class="settings-drawer" id="settingsDrawer">
+
+  <!-- Voice gender -->
+  <div class="settings-row">
+    <div class="settings-label">AI Voice</div>
+    <div class="voice-options">
+      <div class="voice-opt active" id="voiceMale" onclick="setVoiceGender('male')">
+        <span class="voice-opt-icon">👨</span>
+        <div class="voice-opt-label">Male</div>
+      </div>
+      <div class="voice-opt" id="voiceFemale" onclick="setVoiceGender('female')">
+        <span class="voice-opt-icon">👩</span>
+        <div class="voice-opt-label">Female</div>
+      </div>
+      <div class="voice-opt" id="voiceRandom" onclick="setVoiceGender('any')">
+        <span class="voice-opt-icon">🎲</span>
+        <div class="voice-opt-label">Random</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mic language -->
+  <div class="settings-row">
+    <div class="settings-label">Mic Lang</div>
+    <div class="auto-badge" id="autoLangBadge">
+      <div class="auto-dot"></div>
+      Auto-detect
+    </div>
+    <div class="mic-lang-scroll" id="micLangScroll" style="display:none"></div>
+    <button style="background:none;border:1px solid #333;border-radius:8px;padding:4px 8px;color:var(--muted);font-size:11px;cursor:pointer;flex-shrink:0;margin-left:6px" onclick="toggleMicLangMode()">Manual</button>
+  </div>
+
 </div>
 
-<!-- QUICK CHIPS -->
+<!-- CHIPS -->
 <div class="chips-bar">
-  <div class="chips-label">Quick scenarios</div>
   <div class="chips">
-    <div class="chip" onclick="sendQuick('I cannot find this address, the unit number doesnt exist')">📍 Can't find address</div>
-    <div class="chip" onclick="sendQuick('Customer not answering phone, what do I do?')">📞 No answer</div>
-    <div class="chip" onclick="sendQuick('Heavy traffic ahead, should I re-sequence my stops?')">🚦 Traffic jam</div>
-    <div class="chip" onclick="sendQuick('My parcel arrived damaged, how do I report?')">📦 Damaged parcel</div>
-    <div class="chip" onclick="sendQuick('I am running behind schedule today, what should I prioritize?')">⏱️ Running late</div>
-    <div class="chip" onclick="sendQuick('Customer wants to change delivery address last minute')">🔄 Address change</div>
+    <div class="chip" onclick="sendQuick('I cannot find this address, show me on map')">Lost - show map</div>
+    <div class="chip" onclick="sendQuick('Customer not answering phone, what do I do?')">No answer</div>
+    <div class="chip" onclick="sendQuick('Heavy traffic, help me re-sequence stops')">Traffic jam</div>
+    <div class="chip" onclick="sendQuick('My parcel arrived damaged, how do I report?')">Damaged parcel</div>
+    <div class="chip" onclick="sendQuick('I am running behind schedule, help me')">Running late</div>
   </div>
 </div>
 
 <!-- CHAT -->
 <div class="chat" id="chat">
   <div class="msg ai">
-    <div class="msg-label">🥷 Senior Driver AI</div>
-    <div class="bubble">
-      Yo! I'm your AI Senior Driver — 10 years on Ninja Van roads! 🚚<br><br>
-      Got a problem? <strong>Speak in any language, type, or send a photo</strong> — I'm right here with you!
-    </div>
+    <div class="msg-label">Senior Driver AI</div>
+    <div class="bubble">Yo! I'm your AI Senior Driver — 10 years on Ninja Van roads!<br><br>Just speak naturally in any language — I will understand and reply in your language automatically. Tap the settings icon to choose a male or female voice!</div>
   </div>
   <div class="scroll-end" id="scrollEnd"></div>
 </div>
 
 <div class="speak-bar" id="speakBar">
   <div class="wave"><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div></div>
-  <span>AI is speaking...</span>
+  <span id="speakLang">AI is speaking...</span>
   <button class="stop-speak" onclick="stopSpeak()">Stop</button>
 </div>
 
 <div class="img-preview-bar" id="imgPreview">
   <img class="preview-thumb" id="previewThumb" src="" alt="">
-  <div class="preview-info">
-    <p>📷 Photo attached</p>
-    <small>AI will analyze this image</small>
-  </div>
-  <button class="remove-img" onclick="clearImg()">✕ Remove</button>
+  <div class="preview-info"><p>Photo attached</p><small>AI will analyze this image</small></div>
+  <button class="remove-img" onclick="clearImg()">Remove</button>
 </div>
 
 <div class="controls">
   <div class="input-row">
     <div class="input-wrap">
-      <textarea class="text-input" id="textInput" placeholder="Type your problem or attach a photo..." rows="1"
+      <textarea class="text-input" id="textInput" placeholder="Speak or type in any language..." rows="1"
         oninput="autoResize(this)"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText()}"></textarea>
     </div>
@@ -218,8 +242,7 @@
   </div>
   <div class="btn-row">
     <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
-      <span>🎙️</span>
-      <span id="voiceBtnText">TAP TO SPEAK</span>
+      <span>🎙️</span><span id="voiceBtnText">TAP TO SPEAK</span>
     </button>
   </div>
 </div>
@@ -228,228 +251,381 @@
 
 <script>
 const API_BASE = window.location.origin;
+let mapCounter = 0;
 
-// ── ALL SUPPORTED LANGUAGES ──
-const LANGUAGES = [
-  { code: 'en-US',  flag: '🇬🇧', label: 'English' },
-  { code: 'zh-CN',  flag: '🇨🇳', label: '普通话' },
-  { code: 'zh-HK',  flag: '🇭🇰', label: '廣東話' },
-  { code: 'ms-MY',  flag: '🇲🇾', label: 'Melayu' },
-  { code: 'id-ID',  flag: '🇮🇩', label: 'Indonesia' },
-  { code: 'th-TH',  flag: '🇹🇭', label: 'ภาษาไทย' },
-  { code: 'vi-VN',  flag: '🇻🇳', label: 'Tiếng Việt' },
-  { code: 'fil-PH', flag: '🇵🇭', label: 'Filipino' },
-  { code: 'ko-KR',  flag: '🇰🇷', label: '한국어' },
-  { code: 'ja-JP',  flag: '🇯🇵', label: '日本語' },
+// All supported mic languages
+const MIC_LANGUAGES = [
+  { code:'en-US',  flag:'🇬🇧', label:'EN' },
+  { code:'zh-CN',  flag:'🇨🇳', label:'普通话' },
+  { code:'zh-HK',  flag:'🇭🇰', label:'廣東話' },
+  { code:'ms-MY',  flag:'🇲🇾', label:'MY' },
+  { code:'id-ID',  flag:'🇮🇩', label:'ID' },
+  { code:'th-TH',  flag:'🇹🇭', label:'TH' },
+  { code:'vi-VN',  flag:'🇻🇳', label:'VN' },
+  { code:'fil-PH', flag:'🇵🇭', label:'PH' },
+  { code:'ko-KR',  flag:'🇰🇷', label:'KO' },
+  { code:'ja-JP',  flag:'🇯🇵', label:'JP' },
 ];
 
-let currentLang = 'en-US';
+// Language code to BCP-47 for TTS matching
+const LANG_TTS_MAP = {
+  'zh': ['zh-CN','zh-TW','zh-HK'],
+  'ms': ['ms-MY','ms'],
+  'id': ['id-ID','id'],
+  'th': ['th-TH','th'],
+  'vi': ['vi-VN','vi'],
+  'fil': ['fil-PH','tl-PH','fil'],
+  'ko': ['ko-KR','ko'],
+  'ja': ['ja-JP','ja'],
+  'en': ['en-US','en-GB','en-AU'],
+};
+
+let currentMicLang = 'en-US';
+let micLangAutoMode = true;
+let voiceGender = 'male';
 let history = [];
 let isListening = false;
 let recognition = null;
 let pendingImageB64 = null;
 let pendingImageType = null;
+let currentLat = null;
+let currentLng = null;
+let gpsActive = false;
+let gpsWatchId = null;
+let lastDetectedLang = 'en'; // track last detected language for TTS
 
-// ── BUILD LANGUAGE BUTTONS ──
-function buildLangButtons() {
-  const container = document.getElementById('langScroll');
-  LANGUAGES.forEach((lang, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'lang-btn' + (i === 0 ? ' active' : '');
-    btn.id = 'lang-' + lang.code;
-    btn.textContent = lang.flag + ' ' + lang.label;
-    btn.onclick = () => setLang(lang.code, btn);
-    container.appendChild(btn);
-  });
+// ── SETTINGS ──
+function toggleSettings() {
+  const d = document.getElementById('settingsDrawer');
+  d.classList.toggle('open');
+  if (d.classList.contains('open')) buildMicLangButtons();
 }
 
-function setLang(code, btn) {
-  currentLang = code;
-  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
-  setupVoice();
-  // Scroll selected into view
-  btn.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+function setVoiceGender(gender) {
+  voiceGender = gender;
+  ['voiceMale','voiceFemale','voiceRandom'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('voice' + gender.charAt(0).toUpperCase() + gender.slice(1)).classList.add('active');
+}
+
+let micLangBuilt = false;
+function buildMicLangButtons() {
+  if (micLangBuilt) return;
+  const c = document.getElementById('micLangScroll');
+  MIC_LANGUAGES.forEach((lang, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'mic-lang-btn' + (i===0?' active':'');
+    btn.textContent = lang.flag + ' ' + lang.label;
+    btn.onclick = () => {
+      currentMicLang = lang.code;
+      document.querySelectorAll('.mic-lang-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      setupVoice();
+    };
+    c.appendChild(btn);
+  });
+  micLangBuilt = true;
+}
+
+function toggleMicLangMode() {
+  micLangAutoMode = !micLangAutoMode;
+  const badge = document.getElementById('autoLangBadge');
+  const scroll = document.getElementById('micLangScroll');
+  if (micLangAutoMode) {
+    badge.style.display = 'flex';
+    scroll.style.display = 'none';
+    currentMicLang = 'en-US'; // reset to english, auto detect will handle language in AI
+  } else {
+    badge.style.display = 'none';
+    scroll.style.display = 'flex';
+    buildMicLangButtons();
+  }
+}
+
+// ── GPS ──
+function toggleGPS() {
+  gpsActive ? stopGPS() : startGPS();
+}
+function startGPS() {
+  if (!navigator.geolocation) { addAIMsg('GPS not supported on this device.'); return; }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      currentLat = pos.coords.latitude;
+      currentLng = pos.coords.longitude;
+      gpsActive = true;
+      document.getElementById('gpsBtn').classList.add('on');
+      document.getElementById('gpsBtn').textContent = '🟢';
+      addAIMsg('GPS locked! I can see your location now. Ask me to show your position or navigate to any address!');
+      gpsWatchId = navigator.geolocation.watchPosition(
+        (p) => { currentLat=p.coords.latitude; currentLng=p.coords.longitude; },
+        null, { enableHighAccuracy:true, timeout:10000 }
+      );
+    },
+    () => { addAIMsg('Could not get GPS. Please allow location access in browser settings.'); },
+    { enableHighAccuracy:true, timeout:10000 }
+  );
+}
+function stopGPS() {
+  if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
+  gpsActive=false; currentLat=null; currentLng=null;
+  document.getElementById('gpsBtn').classList.remove('on');
+  document.getElementById('gpsBtn').textContent = '📍';
+}
+
+// ── MAP ──
+function showMap(lat, lng, destLat, destLng, destName, instructions) {
+  const anchor = document.getElementById('scrollEnd');
+  const mapId = 'map-' + (++mapCounter);
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.innerHTML = '<div class="msg-label">Senior Driver AI</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (instructions) { const p=document.createElement('p'); p.textContent=instructions; p.style.marginBottom='0'; bubble.appendChild(p); }
+  const card = document.createElement('div'); card.className='map-card';
+  const hdr = document.createElement('div'); hdr.className='map-hdr';
+  const title = document.createElement('div'); title.className='map-title';
+  title.textContent = destName ? 'Route to: '+destName : 'Your location';
+  const openBtn = document.createElement('button'); openBtn.className='map-open-btn';
+  openBtn.textContent='Open Maps';
+  openBtn.onclick=()=>{
+    const url = destLat&&destLng
+      ? `https://www.google.com/maps/dir/${lat},${lng}/${destLat},${destLng}`
+      : `https://www.google.com/maps?q=${lat},${lng}`;
+    window.open(url,'_blank');
+  };
+  hdr.appendChild(title); hdr.appendChild(openBtn);
+  const mapDiv=document.createElement('div'); mapDiv.className='map-container'; mapDiv.id=mapId;
+  const footer=document.createElement('div'); footer.className='map-footer';
+  footer.textContent=`You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  card.appendChild(hdr); card.appendChild(mapDiv); card.appendChild(footer);
+  bubble.appendChild(card); div.appendChild(bubble);
+  anchor.parentNode.insertBefore(div, anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
+  setTimeout(()=>{
+    const map=L.map(mapId,{zoomControl:true,attributionControl:false}).setView([lat,lng],15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
+    const youIcon=L.divIcon({html:'<div style="width:16px;height:16px;background:#2196F3;border:3px solid white;border-radius:50%;box-shadow:0 0 0 6px rgba(33,150,243,0.3)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
+    L.marker([lat,lng],{icon:youIcon}).addTo(map).bindPopup('You are here').openPopup();
+    if (destLat&&destLng) {
+      const destIcon=L.divIcon({html:'<div style="width:20px;height:28px"><div style="width:20px;height:20px;background:#D0021B;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div></div>',iconSize:[20,28],iconAnchor:[10,28],className:''});
+      L.marker([destLat,destLng],{icon:destIcon}).addTo(map).bindPopup(destName||'Destination');
+      const line=L.polyline([[lat,lng],[destLat,destLng]],{color:'#D0021B',weight:4,opacity:0.8,dashArray:'10,6'}).addTo(map);
+      map.fitBounds(line.getBounds(),{padding:[30,30]});
+    }
+  },150);
+}
+
+async function geocodeAddress(address) {
+  try {
+    const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+    const data=await res.json();
+    if (data&&data.length>0) return {lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon),name:data[0].display_name};
+  } catch(e) {}
+  return null;
 }
 
 // ── VOICE ──
 function setupVoice() {
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SR) {
-    document.getElementById('voiceBtn').innerHTML = '⚠️ Use Chrome for voice';
-    return;
-  }
-  recognition = new SR();
-  recognition.lang = currentLang;
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.onresult = (e) => {
-    document.getElementById('textInput').value = e.results[0][0].transcript;
-    stopListening();
-    sendText();
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if (!SR) { document.getElementById('voiceBtn').innerHTML='⚠️ Use Chrome for voice'; return; }
+  recognition=new SR();
+  recognition.lang = micLangAutoMode ? 'en-US' : currentMicLang;
+  recognition.continuous=false; recognition.interimResults=false;
+  recognition.onresult=(e)=>{
+    document.getElementById('textInput').value=e.results[0][0].transcript;
+    stopListening(); sendText();
   };
-  recognition.onerror = recognition.onend = stopListening;
+  recognition.onerror=recognition.onend=stopListening;
 }
 
 function toggleVoice() {
   if (isListening) { stopListening(); return; }
-  stopSpeak();
-  isListening = true;
-  try { recognition && recognition.start(); } catch(e) {}
-  const lang = LANGUAGES.find(l => l.code === currentLang);
+  stopSpeak(); isListening=true;
+  try { recognition&&recognition.start(); } catch(e) {}
   document.getElementById('voiceBtn').classList.add('listening');
-  document.getElementById('voiceBtnText').textContent = '🔴 ' + (lang ? lang.flag : '') + ' LISTENING...';
+  document.getElementById('voiceBtnText').textContent = micLangAutoMode ? '🔴 AUTO DETECTING...' : '🔴 LISTENING...';
 }
-
 function stopListening() {
-  isListening = false;
-  try { recognition && recognition.stop(); } catch(e) {}
+  isListening=false;
+  try { recognition&&recognition.stop(); } catch(e) {}
   document.getElementById('voiceBtn').classList.remove('listening');
-  document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
+  document.getElementById('voiceBtnText').textContent='TAP TO SPEAK';
 }
 
-// ── RESIZE ──
-function autoResize(el) {
-  el.style.height = 'auto';
-  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
-}
-
-// ── CAMERA ──
+function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
 function triggerCamera() { document.getElementById('fileInput').click(); }
-
 function handleFile(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
-    const dataUrl = ev.target.result;
-    pendingImageB64 = dataUrl.split(',')[1];
-    pendingImageType = file.type || 'image/jpeg';
-    document.getElementById('previewThumb').src = dataUrl;
+  const file=e.target.files[0]; if (!file) return;
+  const reader=new FileReader();
+  reader.onload=(ev)=>{
+    const dataUrl=ev.target.result;
+    pendingImageB64=dataUrl.split(',')[1]; pendingImageType=file.type||'image/jpeg';
+    document.getElementById('previewThumb').src=dataUrl;
     document.getElementById('imgPreview').classList.add('on');
     document.getElementById('camBtn').classList.add('has-img');
   };
-  reader.readAsDataURL(file);
-  e.target.value = '';
+  reader.readAsDataURL(file); e.target.value='';
 }
-
 function clearImg() {
-  pendingImageB64 = null; pendingImageType = null;
+  pendingImageB64=null; pendingImageType=null;
   document.getElementById('imgPreview').classList.remove('on');
   document.getElementById('camBtn').classList.remove('has-img');
-  document.getElementById('previewThumb').src = '';
+  document.getElementById('previewThumb').src='';
 }
 
-// ── SEND ──
-async function sendQuick(text) {
-  document.getElementById('textInput').value = text;
-  await sendText();
-}
+async function sendQuick(text) { document.getElementById('textInput').value=text; await sendText(); }
 
 async function sendText() {
-  const input = document.getElementById('textInput');
-  const text = input.value.trim();
-  const hasImg = !!pendingImageB64;
-  if (!text && !hasImg) return;
-  input.value = ''; input.style.height = 'auto';
+  const input=document.getElementById('textInput');
+  const text=input.value.trim();
+  const hasImg=!!pendingImageB64;
+  if (!text&&!hasImg) return;
+  input.value=''; input.style.height='auto';
   stopSpeak();
+  addUserMsg(text, hasImg?document.getElementById('previewThumb').src:null);
 
-  addUserMsg(text, hasImg ? document.getElementById('previewThumb').src : null);
+  let userText=text;
+  if (currentLat&&currentLng) userText+=` [DRIVER_GPS: ${currentLat.toFixed(6)},${currentLng.toFixed(6)}]`;
 
-  let userContent;
-  if (hasImg) {
-    userContent = [
-      { type: 'image', source: { type: 'base64', media_type: pendingImageType, data: pendingImageB64 } },
-      { type: 'text', text: text || 'Please analyze this image and give me guidance as a Ninja Van driver.' }
-    ];
-  } else {
-    userContent = text;
-  }
+  let userContent=hasImg?[
+    {type:'image',source:{type:'base64',media_type:pendingImageType,data:pendingImageB64}},
+    {type:'text',text:userText||'Analyze this image and guide me as a Ninja Van driver.'}
+  ]:userText;
 
-  history.push({ role: 'user', content: userContent });
-  clearImg();
-  showTyping();
+  history.push({role:'user',content:hasImg?userContent:text});
+  clearImg(); showTyping();
 
   try {
-    const res = await fetch(`${API_BASE}/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: history })
+    const res=await fetch(`${API_BASE}/chat`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({messages:history.slice(0,-1).concat([{role:'user',content:userContent}])})
     });
-    const data = await res.json();
+    const data=await res.json();
     removeTyping();
-    if (!res.ok) { addAIMsg('⚠️ ' + (data.detail || 'Server error.')); return; }
-    const reply = data.reply || 'Something went wrong, try again!';
-    history.push({ role: 'assistant', content: reply });
-    addAIMsg(reply);
-    speak(reply);
-  } catch (err) {
+    if (!res.ok) { addAIMsg('Error: '+(data.detail||'Server error.')); return; }
+    const reply=data.reply||'Something went wrong, try again!';
+    const destAddress=data.dest_address||null;
+    history.push({role:'assistant',content:reply});
+
+    // Detect language from reply for TTS
+    detectLangFromReply(reply);
+
+    if (destAddress&&currentLat&&currentLng) {
+      addAIMsg(reply);
+      speak(reply);
+      const coords=await geocodeAddress(destAddress);
+      if (coords) showMap(currentLat,currentLng,coords.lat,coords.lng,destAddress,null);
+    } else if (data.show_my_location&&currentLat&&currentLng) {
+      addAIMsg(reply); speak(reply);
+      showMap(currentLat,currentLng,null,null,null,null);
+    } else if ((text.toLowerCase().includes('where am i')||text.toLowerCase().includes('show map')||text.toLowerCase().includes('lost'))&&currentLat&&currentLng) {
+      addAIMsg(reply); speak(reply);
+      showMap(currentLat,currentLng,null,null,null,null);
+    } else {
+      addAIMsg(reply); speak(reply);
+    }
+  } catch(err) {
     removeTyping();
-    addAIMsg('⚠️ Cannot reach server. Check connection.');
+    addAIMsg('Cannot reach server. Check your connection.');
   }
 }
 
-// ── CHAT UI ──
+// Detect language from AI reply to set correct TTS voice
+function detectLangFromReply(text) {
+  // Simple unicode range detection
+  if (/[\u4e00-\u9fff]/.test(text)) { lastDetectedLang='zh'; return; }
+  if (/[\u0e00-\u0e7f]/.test(text)) { lastDetectedLang='th'; return; }
+  if (/[\uac00-\ud7af]/.test(text)) { lastDetectedLang='ko'; return; }
+  if (/[\u3040-\u30ff]/.test(text)) { lastDetectedLang='ja'; return; }
+  if (/[\u0600-\u06ff]/.test(text)) { lastDetectedLang='ar'; return; }
+  // For latin-script languages, check common words
+  if (/\b(anda|saya|tidak|boleh|dengan|untuk)\b/i.test(text)) { lastDetectedLang='ms'; return; }
+  if (/\b(anda|saya|tidak|bisa|dengan|untuk|kamu)\b/i.test(text)) { lastDetectedLang='id'; return; }
+  if (/\b(ako|mo|ng|mga|ka|na|po|ito)\b/i.test(text)) { lastDetectedLang='fil'; return; }
+  if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(text)) { lastDetectedLang='vi'; return; }
+  lastDetectedLang='en';
+}
+
 function addUserMsg(text, imgSrc) {
-  const anchor = document.getElementById('scrollEnd');
-  const div = document.createElement('div');
-  div.className = 'msg user';
-  div.innerHTML = '<div class="msg-label">👤 You</div>';
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  if (imgSrc) {
-    const img = document.createElement('img');
-    img.src = imgSrc; img.className = 'msg-img';
-    bubble.appendChild(img);
-  }
-  if (text) { const t = document.createElement('span'); t.textContent = text; bubble.appendChild(t); }
+  const anchor=document.getElementById('scrollEnd');
+  const div=document.createElement('div'); div.className='msg user';
+  div.innerHTML='<div class="msg-label">You</div>';
+  const bubble=document.createElement('div'); bubble.className='bubble';
+  if (imgSrc){const img=document.createElement('img');img.src=imgSrc;img.className='msg-img';bubble.appendChild(img);}
+  if (text){const t=document.createElement('span');t.textContent=text;bubble.appendChild(t);}
   div.appendChild(bubble);
-  anchor.parentNode.insertBefore(div, anchor);
-  anchor.scrollIntoView({ behavior: 'smooth' });
+  anchor.parentNode.insertBefore(div,anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
 }
 
 function addAIMsg(text) {
-  const anchor = document.getElementById('scrollEnd');
-  const div = document.createElement('div');
-  div.className = 'msg ai';
-  div.innerHTML = '<div class="msg-label">🥷 Senior Driver AI</div>';
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.textContent = text;
+  const anchor=document.getElementById('scrollEnd');
+  const div=document.createElement('div'); div.className='msg ai';
+  div.innerHTML='<div class="msg-label">Senior Driver AI</div>';
+  const bubble=document.createElement('div'); bubble.className='bubble';
+  bubble.textContent=text;
   div.appendChild(bubble);
-  anchor.parentNode.insertBefore(div, anchor);
-  anchor.scrollIntoView({ behavior: 'smooth' });
+  anchor.parentNode.insertBefore(div,anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
 }
 
-let typingEl = null;
+let typingEl=null;
 function showTyping() {
-  const anchor = document.getElementById('scrollEnd');
-  typingEl = document.createElement('div');
-  typingEl.className = 'msg ai';
-  typingEl.innerHTML = '<div class="msg-label">🥷 Senior Driver AI</div><div class="typing-bubble"><span></span><span></span><span></span></div>';
-  anchor.parentNode.insertBefore(typingEl, anchor);
-  anchor.scrollIntoView({ behavior: 'smooth' });
+  const anchor=document.getElementById('scrollEnd');
+  typingEl=document.createElement('div'); typingEl.className='msg ai';
+  typingEl.innerHTML='<div class="msg-label">Senior Driver AI</div><div class="typing-bubble"><span></span><span></span><span></span></div>';
+  anchor.parentNode.insertBefore(typingEl,anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
 }
-function removeTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+function removeTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
 
-// ── TTS ──
+// ── TTS with gender + language matching ──
+function stripEmojis(text) {
+  return text
+    .replace(/[\u{1F000}-\u{1FFFF}]/gu,'')
+    .replace(/[\u{2600}-\u{27BF}]/gu,'')
+    .replace(/[\u{FE00}-\u{FEFF}]/gu,'')
+    .replace(/[\u{1F900}-\u{1FAFF}]/gu,'')
+    .replace(/[*_#\[\]]/g,'')
+    .replace(/\s+/g,' ').trim();
+}
+
 function speak(text) {
   stopSpeak();
   if (!window.speechSynthesis) return;
-  const clean = text.replace(/[^\x00-\x7F\u3000-\u9fff\uac00-\ud7af\u0e00-\u0e7f\u0600-\u06ff]/g, '').replace(/\s+/g,' ').trim();
+  const clean=stripEmojis(text);
   if (!clean) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 1.05; u.pitch = 0.9;
-  // Match TTS voice to selected language
-  const voices = speechSynthesis.getVoices();
-  const langPrefix = currentLang.split('-')[0];
-  const v = voices.find(v => v.lang.startsWith(currentLang))
-         || voices.find(v => v.lang.startsWith(langPrefix))
-         || voices.find(v => v.lang.startsWith('en'))
-         || voices[0];
-  if (v) u.voice = v;
-  u.onstart = () => document.getElementById('speakBar').classList.add('on');
-  u.onend = u.onerror = () => document.getElementById('speakBar').classList.remove('on');
+  const u=new SpeechSynthesisUtterance(clean);
+  u.rate=1.05; u.pitch=voiceGender==='female'?1.2:0.85;
+  const voices=speechSynthesis.getVoices();
+
+  // Find best voice: match language + gender preference
+  const targetLangs=LANG_TTS_MAP[lastDetectedLang]||LANG_TTS_MAP['en'];
+  let v=null;
+
+  if (voiceGender==='male') {
+    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&/male/i.test(v.name)&&!/female/i.test(v.name))
+     ||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&!(/female/i.test(v.name)));
+  } else if (voiceGender==='female') {
+    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&/female/i.test(v.name))
+     ||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&!(/male/i.test(v.name)));
+  } else {
+    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l)));
+  }
+
+  // Fallback to any matching language, then any English
+  v=v||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l)))
+    ||voices.find(v=>v.lang.startsWith('en'))
+    ||voices[0];
+
+  if (v) {
+    u.voice=v;
+    document.getElementById('speakLang').textContent='Speaking: '+v.name.substring(0,20);
+  }
+
+  u.onstart=()=>document.getElementById('speakBar').classList.add('on');
+  u.onend=u.onerror=()=>document.getElementById('speakBar').classList.remove('on');
   speechSynthesis.speak(u);
 }
 
@@ -458,10 +634,9 @@ function stopSpeak() {
   document.getElementById('speakBar').classList.remove('on');
 }
 
-// ── INIT ──
-buildLangButtons();
+// Init
 setupVoice();
-if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged=()=>{};
 </script>
 </body>
 </html>
