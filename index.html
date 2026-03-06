@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Ninja Co-Pilot</title>
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #D0021B;
+    --dark-red: #8B0000;
+    --black: #0A0A0A;
+    --dark: #111111;
+    --card: #1A1A1A;
+    --border: #2A2A2A;
+    --text: #F0F0F0;
+    --muted: #777;
+    --green: #00C853;
+    --blue: #2196F3;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    background: var(--black);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    background: linear-gradient(135deg, var(--dark-red), var(--red));
+    padding: 14px 18px 14px;
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+    position: relative; overflow: hidden;
+  }
+  .header::after { content:''; position:absolute; top:-40px; right:-20px; width:130px; height:130px; background:rgba(255,255,255,0.05); border-radius:50%; }
+  .ninja-icon { font-size: 26px; z-index:1; }
+  .header-text { z-index:1; }
+  .brand { font-family:'Rajdhani',sans-serif; font-size:20px; font-weight:700; letter-spacing:1px; line-height:1; }
+  .brand span { opacity:0.65; font-weight:500; }
+  .subtitle { font-size:9px; opacity:0.65; letter-spacing:2.5px; text-transform:uppercase; }
+  .status-pill {
+    margin-left: auto; z-index:1;
+    background: rgba(0,200,83,0.15);
+    border: 1px solid rgba(0,200,83,0.3);
+    border-radius: 20px; padding: 4px 10px;
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; color: var(--green);
+  }
+  .status-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:blink 2s infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  /* CHIPS */
+  .chips-bar { padding:10px 14px 6px; flex-shrink:0; }
+  .chips-label { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:7px; }
+  .chips { display:flex; gap:7px; overflow-x:auto; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip {
+    background:var(--card); border:1px solid var(--border);
+    border-radius:20px; padding:6px 13px;
+    font-size:12px; cursor:pointer; white-space:nowrap;
+    flex-shrink:0; transition:all 0.15s; color:var(--text);
+  }
+  .chip:active { background:var(--red); border-color:var(--red); transform:scale(0.96); }
+
+  /* CHAT */
+  .chat { flex:1; overflow-y:auto; padding:12px 14px 14px; display:flex; flex-direction:column; gap:11px; }
+
+  .msg { max-width:90%; animation:pop 0.25s ease; }
+  @keyframes pop { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+  .msg.ai { align-self:flex-start; }
+  .msg.user { align-self:flex-end; }
+  .msg-label { font-size:10px; letter-spacing:1px; text-transform:uppercase; opacity:0.45; margin-bottom:3px; padding: 0 3px; }
+  .msg.user .msg-label { text-align:right; }
+
+  .bubble {
+    padding:11px 14px;
+    border-radius:16px;
+    font-size:14px; line-height:1.55;
+  }
+  .msg.ai .bubble { background:var(--card); border:1px solid var(--border); border-bottom-left-radius:3px; }
+  .msg.user .bubble { background:linear-gradient(135deg,var(--red),var(--dark-red)); border-bottom-right-radius:3px; }
+
+  /* Image in chat */
+  .msg-img {
+    max-width: 100%;
+    border-radius: 12px;
+    margin-bottom: 6px;
+    display: block;
+    max-height: 200px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+  }
+
+  /* Typing */
+  .typing-bubble { display:flex; gap:4px; padding:12px 14px; background:var(--card); border:1px solid var(--border); border-radius:16px; border-bottom-left-radius:3px; width:fit-content; }
+  .typing-bubble span { width:6px; height:6px; background:var(--muted); border-radius:50%; animation:bounce 1.2s infinite; }
+  .typing-bubble span:nth-child(2){animation-delay:0.2s} .typing-bubble span:nth-child(3){animation-delay:0.4s}
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:0.4} 40%{transform:translateY(-5px);opacity:1} }
+
+  .scroll-end { height:1px; }
+
+  /* SPEAKING BAR */
+  .speak-bar {
+    display:none; align-items:center; gap:8px;
+    padding:6px 16px;
+    background:rgba(0,200,83,0.08);
+    border-top:1px solid rgba(0,200,83,0.15);
+    flex-shrink:0;
+  }
+  .speak-bar.on { display:flex; }
+  .speak-bar span { font-size:11px; color:var(--green); }
+  .wave { display:flex; gap:2px; align-items:center; }
+  .wb { width:3px; background:var(--green); border-radius:2px; animation:wv 0.8s infinite ease-in-out; }
+  .wb:nth-child(1){height:7px} .wb:nth-child(2){height:13px;animation-delay:.1s} .wb:nth-child(3){height:9px;animation-delay:.2s} .wb:nth-child(4){height:15px;animation-delay:.3s} .wb:nth-child(5){height:7px;animation-delay:.4s}
+  @keyframes wv { 0%,100%{transform:scaleY(0.4)} 50%{transform:scaleY(1.1)} }
+  .stop-speak { margin-left:auto; background:none; border:1px solid #444; color:#999; border-radius:8px; padding:3px 9px; font-size:11px; cursor:pointer; }
+
+  /* IMAGE PREVIEW */
+  .img-preview-bar {
+    display:none; align-items:center; gap:10px;
+    padding:8px 14px;
+    background: rgba(33,150,243,0.08);
+    border-top: 1px solid rgba(33,150,243,0.2);
+    flex-shrink:0;
+  }
+  .img-preview-bar.on { display:flex; }
+  .preview-thumb { width:44px; height:44px; border-radius:8px; object-fit:cover; border:1px solid rgba(33,150,243,0.4); }
+  .preview-info { flex:1; }
+  .preview-info p { font-size:12px; color:var(--blue); }
+  .preview-info small { font-size:11px; color:var(--muted); }
+  .remove-img { background:none; border:1px solid #444; color:#999; border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer; }
+
+  /* CONTROLS */
+  .controls {
+    background:var(--dark);
+    border-top:1px solid var(--border);
+    padding:10px 14px 20px;
+    flex-shrink:0;
+  }
+  .input-row { display:flex; gap:8px; margin-bottom:9px; align-items:flex-end; }
+  .input-wrap { flex:1; position:relative; }
+  .text-input {
+    width:100%; background:var(--card); border:1px solid var(--border);
+    border-radius:22px; padding:11px 16px;
+    color:var(--text); font-size:14px; font-family:inherit;
+    outline:none; resize:none; overflow:hidden;
+    max-height:100px; line-height:1.4;
+  }
+  .text-input:focus { border-color:var(--red); }
+  .text-input::placeholder { color:var(--muted); }
+
+  .btn-row { display:flex; gap:8px; }
+
+  /* Camera button */
+  .cam-btn {
+    width:44px; height:44px; border-radius:50%;
+    background:var(--card); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center;
+    font-size:20px; cursor:pointer; flex-shrink:0;
+    transition:all 0.15s;
+  }
+  .cam-btn:active { background:var(--blue); border-color:var(--blue); transform:scale(0.93); }
+  .cam-btn.has-img { background:rgba(33,150,243,0.2); border-color:var(--blue); }
+
+  .send-btn {
+    width:44px; height:44px; border-radius:50%;
+    background:var(--red); border:none;
+    display:flex; align-items:center; justify-content:center;
+    font-size:18px; cursor:pointer; flex-shrink:0;
+    transition:transform 0.1s;
+  }
+  .send-btn:active { transform:scale(0.9); }
+
+  .voice-btn {
+    flex:1; background:linear-gradient(135deg,var(--red),var(--dark-red));
+    border:none; border-radius:14px; padding:13px;
+    color:white; font-family:'Rajdhani',sans-serif;
+    font-size:17px; font-weight:700; letter-spacing:1px;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px;
+    transition:all 0.2s;
+  }
+  .voice-btn.listening {
+    background:#0a0a0a; border:2px solid var(--red);
+    animation:pulse-border 1s infinite;
+  }
+  @keyframes pulse-border { 0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,0.5)} 50%{box-shadow:0 0 0 6px rgba(208,2,27,0)} }
+  .voice-btn:active { transform:scale(0.97); }
+
+  /* Hidden file input */
+  #fileInput { display:none; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="ninja-icon">🥷</div>
+  <div class="header-text">
+    <div class="brand">NINJA <span>CO-PILOT</span></div>
+    <div class="subtitle">AI Senior Driver Assistant</div>
+  </div>
+  <div class="status-pill">
+    <div class="status-dot"></div>
+    LIVE
+  </div>
+</div>
+
+<div class="chips-bar">
+  <div class="chips-label">Quick scenarios</div>
+  <div class="chips">
+    <div class="chip" onclick="sendQuick('I cannot find this address, the unit number doesnt exist')">📍 Can't find address</div>
+    <div class="chip" onclick="sendQuick('Customer not answering phone, what do I do?')">📞 No answer</div>
+    <div class="chip" onclick="sendQuick('Heavy traffic ahead, should I re-sequence my stops?')">🚦 Traffic jam</div>
+    <div class="chip" onclick="sendQuick('My parcel arrived damaged, how do I report?')">📦 Damaged parcel</div>
+    <div class="chip" onclick="sendQuick('I am running behind schedule today, what should I prioritize?')">⏱️ Running late</div>
+    <div class="chip" onclick="sendQuick('Customer wants to change delivery address last minute')">🔄 Address change</div>
+  </div>
+</div>
+
+<div class="chat" id="chat">
+  <div class="msg ai">
+    <div class="msg-label">🥷 Senior Driver AI</div>
+    <div class="bubble">
+      Yo! I'm your AI Senior Driver — 10 years on Ninja Van roads! 🚚<br><br>
+      Got a problem? <strong>Speak, type, or send me a photo</strong> — address you can't find, damaged parcel, angry customer, anything. I'm right here with you!
+    </div>
+  </div>
+  <div class="scroll-end" id="scrollEnd"></div>
+</div>
+
+<div class="speak-bar" id="speakBar">
+  <div class="wave"><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div></div>
+  <span>AI is speaking...</span>
+  <button class="stop-speak" onclick="stopSpeak()">Stop</button>
+</div>
+
+<div class="img-preview-bar" id="imgPreview">
+  <img class="preview-thumb" id="previewThumb" src="" alt="">
+  <div class="preview-info">
+    <p>📷 Photo attached</p>
+    <small>AI will analyze this image</small>
+  </div>
+  <button class="remove-img" onclick="clearImg()">✕ Remove</button>
+</div>
+
+<div class="controls">
+  <div class="input-row">
+    <div class="input-wrap">
+      <textarea class="text-input" id="textInput" placeholder="Type your problem or attach a photo..." rows="1"
+        oninput="autoResize(this)"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText()}"></textarea>
+    </div>
+    <button class="cam-btn" id="camBtn" onclick="triggerCamera()" title="Take photo or upload">📷</button>
+    <button class="send-btn" onclick="sendText()">➤</button>
+  </div>
+  <div class="btn-row">
+    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
+      <span>🎙️</span>
+      <span id="voiceBtnText">TAP TO SPEAK</span>
+    </button>
+  </div>
+</div>
+
+<input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleFile(event)">
+
+<script>
+// ── CONFIG ──
+// When served from Cloud Run, API calls go to same origin /chat
+// For local testing, change this to your Cloud Run URL
+const API_BASE = window.location.origin;
+
+let history = [];
+let isListening = false;
+let recognition = null;
+let pendingImageB64 = null;
+let pendingImageType = null;
+
+// ── AUTO RESIZE TEXTAREA ──
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+// ── CAMERA / FILE ──
+function triggerCamera() {
+  document.getElementById('fileInput').click();
+}
+
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const dataUrl = ev.target.result;
+    const [header, b64] = dataUrl.split(',');
+    pendingImageB64 = b64;
+    pendingImageType = file.type || 'image/jpeg';
+
+    // Show preview
+    document.getElementById('previewThumb').src = dataUrl;
+    document.getElementById('imgPreview').classList.add('on');
+    document.getElementById('camBtn').classList.add('has-img');
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+}
+
+function clearImg() {
+  pendingImageB64 = null;
+  pendingImageType = null;
+  document.getElementById('imgPreview').classList.remove('on');
+  document.getElementById('camBtn').classList.remove('has-img');
+  document.getElementById('previewThumb').src = '';
+}
+
+// ── SEND ──
+async function sendQuick(text) {
+  document.getElementById('textInput').value = text;
+  await sendText();
+}
+
+async function sendText() {
+  const input = document.getElementById('textInput');
+  const text = input.value.trim();
+  const hasImg = !!pendingImageB64;
+
+  if (!text && !hasImg) return;
+  input.value = '';
+  input.style.height = 'auto';
+  stopSpeak();
+
+  // Build user message for display
+  const displayText = text || '📷 Photo sent for analysis';
+  addUserMsg(displayText, hasImg ? document.getElementById('previewThumb').src : null);
+
+  // Build message for API
+  let userContent;
+  if (hasImg) {
+    userContent = [
+      {
+        type: 'image',
+        source: { type: 'base64', media_type: pendingImageType, data: pendingImageB64 }
+      },
+      { type: 'text', text: text || 'Please analyze this image and give me guidance as a Ninja Van driver.' }
+    ];
+  } else {
+    userContent = text;
+  }
+
+  history.push({ role: 'user', content: userContent });
+  clearImg();
+  showTyping();
+
+  try {
+    const res = await fetch(`${API_BASE}/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: history })
+    });
+
+    const data = await res.json();
+    removeTyping();
+
+    if (!res.ok) {
+      addAIMsg('⚠️ ' + (data.detail || 'Server error. Try again.'));
+      return;
+    }
+
+    const reply = data.reply || "Something went wrong bro, try again!";
+    // Store text-only version in history for follow-ups
+    history.push({ role: 'assistant', content: reply });
+    addAIMsg(reply);
+    speak(reply);
+
+  } catch (err) {
+    removeTyping();
+    addAIMsg('⚠️ Cannot reach server. Make sure you are connected.');
+  }
+}
+
+// ── CHAT UI ──
+function addUserMsg(text, imgSrc) {
+  const anchor = document.getElementById('scrollEnd');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = '<div class="msg-label">👤 You</div>';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  if (imgSrc) {
+    const img = document.createElement('img');
+    img.src = imgSrc;
+    img.className = 'msg-img';
+    bubble.appendChild(img);
+  }
+  if (text && text !== '📷 Photo sent for analysis') {
+    const t = document.createElement('span');
+    t.textContent = text;
+    bubble.appendChild(t);
+  } else if (!imgSrc) {
+    bubble.textContent = text;
+  }
+  div.appendChild(bubble);
+  anchor.parentNode.insertBefore(div, anchor);
+  anchor.scrollIntoView({ behavior: 'smooth' });
+}
+
+function addAIMsg(text) {
+  const anchor = document.getElementById('scrollEnd');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  const label = document.createElement('div');
+  label.className = 'msg-label';
+  label.textContent = '🥷 Senior Driver AI';
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.textContent = text;
+  div.appendChild(label);
+  div.appendChild(bubble);
+  anchor.parentNode.insertBefore(div, anchor);
+  anchor.scrollIntoView({ behavior: 'smooth' });
+}
+
+let typingEl = null;
+function showTyping() {
+  const anchor = document.getElementById('scrollEnd');
+  typingEl = document.createElement('div');
+  typingEl.className = 'msg ai';
+  typingEl.innerHTML = '<div class="msg-label">🥷 Senior Driver AI</div><div class="typing-bubble"><span></span><span></span><span></span></div>';
+  anchor.parentNode.insertBefore(typingEl, anchor);
+  anchor.scrollIntoView({ behavior: 'smooth' });
+}
+function removeTyping() { if (typingEl) { typingEl.remove(); typingEl = null; } }
+
+// ── VOICE ──
+function setupVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    document.getElementById('voiceBtn').innerHTML = '⚠️ Use Chrome for voice';
+    return;
+  }
+  recognition = new SR();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = false;
+  recognition.onresult = (e) => {
+    document.getElementById('textInput').value = e.results[0][0].transcript;
+    stopListening();
+    sendText();
+  };
+  recognition.onerror = recognition.onend = stopListening;
+}
+
+function toggleVoice() {
+  if (isListening) { stopListening(); return; }
+  stopSpeak();
+  isListening = true;
+  try { recognition && recognition.start(); } catch(e) {}
+  document.getElementById('voiceBtn').classList.add('listening');
+  document.getElementById('voiceBtnText').textContent = '🔴 LISTENING... TAP TO STOP';
+}
+
+function stopListening() {
+  isListening = false;
+  try { recognition && recognition.stop(); } catch(e) {}
+  document.getElementById('voiceBtn').classList.remove('listening');
+  document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
+}
+
+// ── TTS ──
+function speak(text) {
+  stopSpeak();
+  if (!window.speechSynthesis) return;
+  const clean = text.replace(/[^\x00-\x7F]/g, '').replace(/\s+/g,' ').trim();
+  if (!clean) return;
+  const u = new SpeechSynthesisUtterance(clean);
+  u.rate = 1.05; u.pitch = 0.9;
+  const voices = speechSynthesis.getVoices();
+  const v = voices.find(v => v.lang.startsWith('en') && /male/i.test(v.name))
+         || voices.find(v => v.lang.startsWith('en')) || voices[0];
+  if (v) u.voice = v;
+  u.onstart = () => document.getElementById('speakBar').classList.add('on');
+  u.onend = u.onerror = () => document.getElementById('speakBar').classList.remove('on');
+  speechSynthesis.speak(u);
+}
+
+function stopSpeak() {
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  document.getElementById('speakBar').classList.remove('on');
+}
+
+// ── INIT ──
+setupVoice();
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => {};
+</script>
+</body>
+</html>
