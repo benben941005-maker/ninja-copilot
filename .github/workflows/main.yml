@@ -3,7 +3,7 @@ name: Deploy Ninja Co-Pilot to Cloud Run
 on:
   push:
     branches:
-      - main
+      - main 
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
