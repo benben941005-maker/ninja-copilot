@@ -15,12 +15,10 @@
     --red:#D0021B; --dark-red:#8B0000; --black:#0A0A0A;
     --dark:#111111; --card:#1A1A1A; --border:#2A2A2A;
     --text:#F0F0F0; --muted:#777; --green:#00C853; --blue:#2196F3;
-    --purple:#9C27B0;
   }
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { background:var(--black); color:var(--text); font-family:'Inter',sans-serif; height:100dvh; display:flex; flex-direction:column; overflow:hidden; }
 
-  /* HEADER */
   .header { background:linear-gradient(135deg,var(--dark-red),var(--red)); padding:12px 16px; display:flex; align-items:center; gap:10px; flex-shrink:0; position:relative; overflow:hidden; }
   .header::after { content:''; position:absolute; top:-40px; right:-20px; width:130px; height:130px; background:rgba(255,255,255,0.05); border-radius:50%; }
   .ninja-icon { font-size:24px; z-index:1; }
@@ -29,46 +27,28 @@
   .brand span { opacity:0.65; font-weight:500; }
   .subtitle { font-size:9px; opacity:0.65; letter-spacing:2px; text-transform:uppercase; }
   .header-btns { display:flex; gap:6px; z-index:1; }
-  .hbtn { background:rgba(255,255,255,0.15); border:none; border-radius:8px; padding:6px 9px; color:white; font-size:14px; cursor:pointer; transition:all 0.2s; }
-  .hbtn:active { background:rgba(255,255,255,0.3); }
+  .hbtn { background:rgba(255,255,255,0.15); border:none; border-radius:8px; padding:6px 9px; color:white; font-size:14px; cursor:pointer; }
   .hbtn.on { background:rgba(0,200,83,0.4); }
 
   /* SETTINGS DRAWER */
-  .settings-drawer {
-    background:var(--card); border-bottom:1px solid var(--border);
-    padding:0; max-height:0; overflow:hidden;
-    transition:max-height 0.3s ease, padding 0.3s ease;
-    flex-shrink:0;
-  }
-  .settings-drawer.open { max-height:200px; padding:12px 16px; }
+  .settings-drawer { background:var(--card); border-bottom:1px solid var(--border); padding:0; max-height:0; overflow:hidden; transition:max-height 0.3s ease, padding 0.3s ease; flex-shrink:0; }
+  .settings-drawer.open { max-height:240px; padding:12px 16px; }
   .settings-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
-  .settings-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; width:80px; flex-shrink:0; }
-
-  /* MIC LANGUAGE — auto detect badge */
-  .auto-badge {
-    background:rgba(33,150,243,0.15); border:1px solid rgba(33,150,243,0.3);
-    border-radius:20px; padding:5px 14px; font-size:12px; color:var(--blue);
-    display:flex; align-items:center; gap:6px;
-  }
-  .auto-dot { width:6px; height:6px; border-radius:50%; background:var(--blue); animation:blink 1.5s infinite; }
+  .settings-label { font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:1px; width:70px; flex-shrink:0; }
 
   /* VOICE GENDER */
-  .voice-options { display:flex; gap:8px; }
-  .voice-opt {
-    flex:1; background:var(--dark); border:1px solid var(--border);
-    border-radius:12px; padding:8px 12px; cursor:pointer;
-    text-align:center; transition:all 0.15s;
-  }
+  .voice-options { display:flex; gap:8px; flex:1; }
+  .voice-opt { flex:1; background:var(--dark); border:1px solid var(--border); border-radius:12px; padding:8px; cursor:pointer; text-align:center; transition:all 0.15s; }
   .voice-opt.active { background:rgba(208,2,27,0.2); border-color:var(--red); }
-  .voice-opt-icon { font-size:20px; display:block; margin-bottom:2px; }
+  .voice-opt-icon { font-size:18px; display:block; }
   .voice-opt-label { font-size:11px; color:var(--muted); }
   .voice-opt.active .voice-opt-label { color:var(--text); }
 
-  /* MIC LANG SELECTOR (shown in settings) */
-  .mic-lang-scroll { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; flex:1; }
-  .mic-lang-scroll::-webkit-scrollbar { display:none; }
-  .mic-lang-btn { background:var(--dark); border:1px solid var(--border); border-radius:16px; padding:4px 10px; font-size:12px; cursor:pointer; white-space:nowrap; flex-shrink:0; color:var(--muted); transition:all 0.15s; }
-  .mic-lang-btn.active { background:rgba(33,150,243,0.2); border-color:var(--blue); color:var(--text); }
+  /* MIC LANG */
+  .lang-scroll-wrap { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; flex:1; }
+  .lang-scroll-wrap::-webkit-scrollbar { display:none; }
+  .lang-pill { background:var(--dark); border:1px solid var(--border); border-radius:16px; padding:5px 11px; font-size:12px; cursor:pointer; white-space:nowrap; flex-shrink:0; color:var(--muted); transition:all 0.15s; }
+  .lang-pill.active { background:rgba(208,2,27,0.2); border-color:var(--red); color:var(--text); font-weight:500; }
 
   /* CHIPS */
   .chips-bar { padding:6px 14px 4px; flex-shrink:0; }
@@ -90,10 +70,10 @@
   .msg.user .bubble { background:linear-gradient(135deg,var(--red),var(--dark-red)); border-bottom-right-radius:3px; }
   .msg-img { max-width:100%; border-radius:12px; margin-bottom:6px; display:block; max-height:180px; object-fit:cover; border:1px solid var(--border); }
 
-  /* LANG DETECTED PILL */
-  .lang-detected { display:inline-flex; align-items:center; gap:4px; background:rgba(33,150,243,0.1); border:1px solid rgba(33,150,243,0.2); border-radius:12px; padding:2px 8px; font-size:10px; color:var(--blue); margin-bottom:6px; }
+  /* DETECTED LANG TAG */
+  .detected-lang { font-size:10px; color:var(--blue); opacity:0.7; margin-bottom:4px; padding:0 3px; }
 
-  /* MAP CARD */
+  /* MAP */
   .map-card { margin-top:10px; border-radius:14px; overflow:hidden; border:1px solid var(--border); }
   .map-hdr { background:rgba(33,150,243,0.12); border-bottom:1px solid rgba(33,150,243,0.2); padding:8px 12px; display:flex; align-items:center; gap:8px; }
   .map-title { font-size:12px; color:var(--blue); font-weight:500; flex:1; }
@@ -103,21 +83,19 @@
 
   .typing-bubble { display:flex; gap:4px; padding:12px 14px; background:var(--card); border:1px solid var(--border); border-radius:16px; border-bottom-left-radius:3px; width:fit-content; }
   .typing-bubble span { width:6px; height:6px; background:var(--muted); border-radius:50%; animation:bounce 1.2s infinite; }
-  .typing-bubble span:nth-child(2){animation-delay:0.2s} .typing-bubble span:nth-child(3){animation-delay:0.4s}
+  .typing-bubble span:nth-child(2){animation-delay:0.2s}.typing-bubble span:nth-child(3){animation-delay:0.4s}
   @keyframes bounce { 0%,80%,100%{transform:translateY(0);opacity:0.4} 40%{transform:translateY(-5px);opacity:1} }
   .scroll-end { height:1px; }
 
-  /* SPEAK BAR */
   .speak-bar { display:none; align-items:center; gap:8px; padding:6px 16px; background:rgba(0,200,83,0.08); border-top:1px solid rgba(0,200,83,0.15); flex-shrink:0; }
   .speak-bar.on { display:flex; }
-  .speak-bar span { font-size:11px; color:var(--green); }
+  .speak-bar-info { font-size:11px; color:var(--green); }
   .wave { display:flex; gap:2px; align-items:center; }
   .wb { width:3px; background:var(--green); border-radius:2px; animation:wv 0.8s infinite ease-in-out; }
   .wb:nth-child(1){height:7px}.wb:nth-child(2){height:13px;animation-delay:.1s}.wb:nth-child(3){height:9px;animation-delay:.2s}.wb:nth-child(4){height:15px;animation-delay:.3s}.wb:nth-child(5){height:7px;animation-delay:.4s}
   @keyframes wv { 0%,100%{transform:scaleY(0.4)} 50%{transform:scaleY(1.1)} }
   .stop-speak { margin-left:auto; background:none; border:1px solid #444; color:#999; border-radius:8px; padding:3px 9px; font-size:11px; cursor:pointer; }
 
-  /* IMAGE PREVIEW */
   .img-preview-bar { display:none; align-items:center; gap:10px; padding:8px 14px; background:rgba(33,150,243,0.08); border-top:1px solid rgba(33,150,243,0.2); flex-shrink:0; }
   .img-preview-bar.on { display:flex; }
   .preview-thumb { width:44px; height:44px; border-radius:8px; object-fit:cover; border:1px solid rgba(33,150,243,0.4); }
@@ -126,7 +104,6 @@
   .preview-info small { font-size:11px; color:var(--muted); }
   .remove-img { background:none; border:1px solid #444; color:#999; border-radius:8px; padding:4px 10px; font-size:11px; cursor:pointer; }
 
-  /* CONTROLS */
   .controls { background:var(--dark); border-top:1px solid var(--border); padding:10px 14px 20px; flex-shrink:0; }
   .input-row { display:flex; gap:8px; margin-bottom:9px; align-items:flex-end; }
   .input-wrap { flex:1; }
@@ -139,11 +116,45 @@
   .send-btn { width:44px; height:44px; border-radius:50%; background:var(--red); border:none; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; flex-shrink:0; }
   .send-btn:active { transform:scale(0.9); }
   .voice-btn { flex:1; background:linear-gradient(135deg,var(--red),var(--dark-red)); border:none; border-radius:14px; padding:13px; color:white; font-family:'Rajdhani',sans-serif; font-size:17px; font-weight:700; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; transition:all 0.2s; }
-  .voice-btn.listening { background:#0a0a0a; border:2px solid var(--red); animation:pulse 1s infinite; }
+  .voice-btn.recording { background:#0a0a0a; border:2px solid #ff4444; animation:pulse 1s infinite; }
+  .voice-btn.processing { background:#0a0a0a; border:2px solid var(--blue); }
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,0.5)} 50%{box-shadow:0 0 0 6px rgba(208,2,27,0)} }
+
+  .handsfree-btn {
+    width:52px; height:52px; border-radius:14px; flex-shrink:0;
+    background:var(--card); border:1px solid var(--border);
+    font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.2s;
+  }
+  .handsfree-btn.on {
+    background:rgba(0,200,83,0.2); border-color:var(--green);
+    animation:hf-pulse 2s infinite;
+  }
+  @keyframes hf-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,83,0.4)} 50%{box-shadow:0 0 0 8px rgba(0,200,83,0)} }
+
+  /* HANDSFREE STATUS BAR */
+  .hf-bar {
+    display:none; align-items:center; gap:10px;
+    padding:8px 16px;
+    background:rgba(0,200,83,0.06);
+    border-bottom:1px solid rgba(0,200,83,0.15);
+    flex-shrink:0;
+  }
+  .hf-bar.on { display:flex; }
+  .hf-indicator {
+    width:10px; height:10px; border-radius:50%; background:var(--muted);
+    flex-shrink:0; transition:background 0.2s;
+  }
+  .hf-indicator.listening { background:var(--green); animation:blink 1s infinite; }
+  .hf-indicator.speaking { background:var(--blue); animation:blink 0.5s infinite; }
+  .hf-indicator.processing { background:#ff9800; animation:blink 0.3s infinite; }
+  .hf-status { font-size:12px; color:var(--muted); flex:1; }
+  .hf-vol-bar { width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .hf-vol-fill { height:100%; background:var(--green); border-radius:2px; width:0%; transition:width 0.05s; }
+  .hf-stop { background:none; border:1px solid #444; color:#999; border-radius:8px; padding:3px 9px; font-size:11px; cursor:pointer; }
+
   #fileInput { display:none; }
 
-  /* Leaflet dark */
   .leaflet-container { background:#1a1a1a !important; }
   .leaflet-tile { filter:brightness(0.7) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7); }
   .leaflet-control-zoom a { background:#1a1a1a; color:#f0f0f0; border-color:#333; }
@@ -163,64 +174,58 @@
   </div>
 </div>
 
-<!-- SETTINGS DRAWER -->
 <div class="settings-drawer" id="settingsDrawer">
-
-  <!-- Voice gender -->
   <div class="settings-row">
     <div class="settings-label">AI Voice</div>
     <div class="voice-options">
-      <div class="voice-opt active" id="voiceMale" onclick="setVoiceGender('male')">
+      <div class="voice-opt" id="voiceMale" onclick="setVoiceGender('male')">
         <span class="voice-opt-icon">👨</span>
-        <div class="voice-opt-label">Male</div>
+        <div class="voice-opt-label">Andrew</div>
       </div>
-      <div class="voice-opt" id="voiceFemale" onclick="setVoiceGender('female')">
+      <div class="voice-opt active" id="voiceFemale" onclick="setVoiceGender('female')">
         <span class="voice-opt-icon">👩</span>
-        <div class="voice-opt-label">Female</div>
-      </div>
-      <div class="voice-opt" id="voiceRandom" onclick="setVoiceGender('any')">
-        <span class="voice-opt-icon">🎲</span>
-        <div class="voice-opt-label">Random</div>
+        <div class="voice-opt-label">Ava</div>
       </div>
     </div>
   </div>
-
-  <!-- Mic language -->
   <div class="settings-row">
     <div class="settings-label">Mic Lang</div>
-    <div class="auto-badge" id="autoLangBadge">
-      <div class="auto-dot"></div>
-      Auto-detect
-    </div>
-    <div class="mic-lang-scroll" id="micLangScroll" style="display:none"></div>
-    <button style="background:none;border:1px solid #333;border-radius:8px;padding:4px 8px;color:var(--muted);font-size:11px;cursor:pointer;flex-shrink:0;margin-left:6px" onclick="toggleMicLangMode()">Manual</button>
+    <div class="lang-scroll-wrap" id="micLangList"></div>
   </div>
-
+  <div style="font-size:11px;color:var(--muted);margin-top:2px;padding-left:80px">
+    Mic language only affects speech recognition — AI always auto-replies in your language
+  </div>
 </div>
 
-<!-- CHIPS -->
 <div class="chips-bar">
   <div class="chips">
     <div class="chip" onclick="sendQuick('I cannot find this address, show me on map')">Lost - show map</div>
-    <div class="chip" onclick="sendQuick('Customer not answering phone, what do I do?')">No answer</div>
+    <div class="chip" onclick="sendQuick('Customer not answering, what do I do?')">No answer</div>
     <div class="chip" onclick="sendQuick('Heavy traffic, help me re-sequence stops')">Traffic jam</div>
-    <div class="chip" onclick="sendQuick('My parcel arrived damaged, how do I report?')">Damaged parcel</div>
-    <div class="chip" onclick="sendQuick('I am running behind schedule, help me')">Running late</div>
+    <div class="chip" onclick="sendQuick('Parcel arrived damaged, how do I report?')">Damaged parcel</div>
+    <div class="chip" onclick="sendQuick('Running behind schedule, help me prioritize')">Running late</div>
   </div>
 </div>
 
-<!-- CHAT -->
 <div class="chat" id="chat">
   <div class="msg ai">
     <div class="msg-label">Senior Driver AI</div>
-    <div class="bubble">Yo! I'm your AI Senior Driver — 10 years on Ninja Van roads!<br><br>Just speak naturally in any language — I will understand and reply in your language automatically. Tap the settings icon to choose a male or female voice!</div>
+    <div class="bubble">Yo! I'm your AI Senior Driver. Just speak naturally in ANY language and I will understand and reply back in your language automatically.<br><br>Tap the car button <strong>🚗</strong> for hands-free mode — I will listen automatically without you needing to tap anything!</div>
   </div>
   <div class="scroll-end" id="scrollEnd"></div>
 </div>
 
+<!-- HANDSFREE BAR -->
+<div class="hf-bar" id="hfBar">
+  <div class="hf-indicator" id="hfIndicator"></div>
+  <span class="hf-status" id="hfStatus">Hands-free ready — just speak anytime</span>
+  <div class="hf-vol-bar"><div class="hf-vol-fill" id="hfVol"></div></div>
+  <button class="hf-stop" onclick="toggleHandsfree()">Stop</button>
+</div>
+
 <div class="speak-bar" id="speakBar">
   <div class="wave"><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div><div class="wb"></div></div>
-  <span id="speakLang">AI is speaking...</span>
+  <span class="speak-bar-info" id="speakInfo">AI is speaking...</span>
   <button class="stop-speak" onclick="stopSpeak()">Stop</button>
 </div>
 
@@ -241,128 +246,94 @@
     <button class="send-btn" onclick="sendText()">➤</button>
   </div>
   <div class="btn-row">
-    <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">
+    <button class="voice-btn" id="voiceBtn" onclick="toggleRecording()">
       <span>🎙️</span><span id="voiceBtnText">TAP TO SPEAK</span>
+    </button>
+    <button class="handsfree-btn" id="handsfreeBtn" onclick="toggleHandsfree()" title="Hands-free mode">
+      🚗
     </button>
   </div>
 </div>
-
 <input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleFile(event)">
 
 <script>
 const API_BASE = window.location.origin;
 let mapCounter = 0;
 
-// All supported mic languages
 const MIC_LANGUAGES = [
-  { code:'en-US',  flag:'🇬🇧', label:'EN' },
+  { code:'en-US',  flag:'🇬🇧', label:'English' },
   { code:'zh-CN',  flag:'🇨🇳', label:'普通话' },
   { code:'zh-HK',  flag:'🇭🇰', label:'廣東話' },
-  { code:'ms-MY',  flag:'🇲🇾', label:'MY' },
-  { code:'id-ID',  flag:'🇮🇩', label:'ID' },
-  { code:'th-TH',  flag:'🇹🇭', label:'TH' },
-  { code:'vi-VN',  flag:'🇻🇳', label:'VN' },
-  { code:'fil-PH', flag:'🇵🇭', label:'PH' },
-  { code:'ko-KR',  flag:'🇰🇷', label:'KO' },
-  { code:'ja-JP',  flag:'🇯🇵', label:'JP' },
+  { code:'ms-MY',  flag:'🇲🇾', label:'Melayu' },
+  { code:'id-ID',  flag:'🇮🇩', label:'Indonesia' },
+  { code:'th-TH',  flag:'🇹🇭', label:'ภาษาไทย' },
+  { code:'vi-VN',  flag:'🇻🇳', label:'Tiếng Việt' },
+  { code:'fil-PH', flag:'🇵🇭', label:'Filipino' },
+  { code:'ko-KR',  flag:'🇰🇷', label:'한국어' },
+  { code:'ja-JP',  flag:'🇯🇵', label:'日本語' },
 ];
 
-// Language code to BCP-47 for TTS matching
-const LANG_TTS_MAP = {
-  'zh': ['zh-CN','zh-TW','zh-HK'],
-  'ms': ['ms-MY','ms'],
-  'id': ['id-ID','id'],
-  'th': ['th-TH','th'],
-  'vi': ['vi-VN','vi'],
-  'fil': ['fil-PH','tl-PH','fil'],
-  'ko': ['ko-KR','ko'],
-  'ja': ['ja-JP','ja'],
-  'en': ['en-US','en-GB','en-AU'],
-};
-
 let currentMicLang = 'en-US';
-let micLangAutoMode = true;
-let voiceGender = 'male';
+let voiceGender = 'female'; // Ava by default
+let lastDetectedLang = 'en';
 let history = [];
-let isListening = false;
-let recognition = null;
+let isRecording = false;
+let mediaRecorder = null;
+let audioChunks = [];
+let recognition = null; // fallback
 let pendingImageB64 = null;
 let pendingImageType = null;
-let currentLat = null;
-let currentLng = null;
-let gpsActive = false;
-let gpsWatchId = null;
-let lastDetectedLang = 'en'; // track last detected language for TTS
+let currentLat = null, currentLng = null;
+let gpsActive = false, gpsWatchId = null;
 
 // ── SETTINGS ──
 function toggleSettings() {
   const d = document.getElementById('settingsDrawer');
   d.classList.toggle('open');
-  if (d.classList.contains('open')) buildMicLangButtons();
+  if (d.classList.contains('open')) buildMicLangPills();
 }
 
-function setVoiceGender(gender) {
-  voiceGender = gender;
-  ['voiceMale','voiceFemale','voiceRandom'].forEach(id => document.getElementById(id).classList.remove('active'));
-  document.getElementById('voice' + gender.charAt(0).toUpperCase() + gender.slice(1)).classList.add('active');
+function setVoiceGender(g) {
+  voiceGender = g;
+  ['voiceMale','voiceFemale'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById(g==='male'?'voiceMale':'voiceFemale').classList.add('active');
 }
 
-let micLangBuilt = false;
-function buildMicLangButtons() {
-  if (micLangBuilt) return;
-  const c = document.getElementById('micLangScroll');
+let pillsBuilt = false;
+function buildMicLangPills() {
+  if (pillsBuilt) return; pillsBuilt = true;
+  const c = document.getElementById('micLangList');
   MIC_LANGUAGES.forEach((lang, i) => {
     const btn = document.createElement('button');
-    btn.className = 'mic-lang-btn' + (i===0?' active':'');
+    btn.className = 'lang-pill' + (i===0?' active':'');
     btn.textContent = lang.flag + ' ' + lang.label;
     btn.onclick = () => {
       currentMicLang = lang.code;
-      document.querySelectorAll('.mic-lang-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.lang-pill').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      setupVoice();
+      btn.scrollIntoView({behavior:'smooth', block:'nearest', inline:'center'});
+      setupFallbackRecognition();
     };
     c.appendChild(btn);
   });
-  micLangBuilt = true;
-}
-
-function toggleMicLangMode() {
-  micLangAutoMode = !micLangAutoMode;
-  const badge = document.getElementById('autoLangBadge');
-  const scroll = document.getElementById('micLangScroll');
-  if (micLangAutoMode) {
-    badge.style.display = 'flex';
-    scroll.style.display = 'none';
-    currentMicLang = 'en-US'; // reset to english, auto detect will handle language in AI
-  } else {
-    badge.style.display = 'none';
-    scroll.style.display = 'flex';
-    buildMicLangButtons();
-  }
 }
 
 // ── GPS ──
-function toggleGPS() {
-  gpsActive ? stopGPS() : startGPS();
-}
+function toggleGPS() { gpsActive ? stopGPS() : startGPS(); }
 function startGPS() {
   if (!navigator.geolocation) { addAIMsg('GPS not supported on this device.'); return; }
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      currentLat = pos.coords.latitude;
-      currentLng = pos.coords.longitude;
-      gpsActive = true;
-      document.getElementById('gpsBtn').classList.add('on');
-      document.getElementById('gpsBtn').textContent = '🟢';
-      addAIMsg('GPS locked! I can see your location now. Ask me to show your position or navigate to any address!');
-      gpsWatchId = navigator.geolocation.watchPosition(
-        (p) => { currentLat=p.coords.latitude; currentLng=p.coords.longitude; },
-        null, { enableHighAccuracy:true, timeout:10000 }
-      );
-    },
-    () => { addAIMsg('Could not get GPS. Please allow location access in browser settings.'); },
-    { enableHighAccuracy:true, timeout:10000 }
-  );
+  navigator.geolocation.getCurrentPosition(pos => {
+    currentLat = pos.coords.latitude; currentLng = pos.coords.longitude;
+    gpsActive = true;
+    document.getElementById('gpsBtn').classList.add('on');
+    document.getElementById('gpsBtn').textContent = '🟢';
+    addAIMsg('GPS locked! Ask me to show your position or navigate to any delivery address.');
+    gpsWatchId = navigator.geolocation.watchPosition(
+      p => { currentLat=p.coords.latitude; currentLng=p.coords.longitude; },
+      null, {enableHighAccuracy:true, timeout:10000}
+    );
+  }, () => addAIMsg('Could not get GPS. Please allow location in browser settings.'),
+  {enableHighAccuracy:true, timeout:10000});
 }
 function stopGPS() {
   if (gpsWatchId) navigator.geolocation.clearWatch(gpsWatchId);
@@ -372,95 +343,424 @@ function stopGPS() {
 }
 
 // ── MAP ──
-function showMap(lat, lng, destLat, destLng, destName, instructions) {
+function showMap(lat, lng, destLat, destLng, destName) {
   const anchor = document.getElementById('scrollEnd');
-  const mapId = 'map-' + (++mapCounter);
-  const div = document.createElement('div');
-  div.className = 'msg ai';
+  const mapId = 'map-'+(++mapCounter);
+  const div = document.createElement('div'); div.className='msg ai';
   div.innerHTML = '<div class="msg-label">Senior Driver AI</div>';
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  if (instructions) { const p=document.createElement('p'); p.textContent=instructions; p.style.marginBottom='0'; bubble.appendChild(p); }
+  const bubble = document.createElement('div'); bubble.className='bubble';
   const card = document.createElement('div'); card.className='map-card';
   const hdr = document.createElement('div'); hdr.className='map-hdr';
   const title = document.createElement('div'); title.className='map-title';
   title.textContent = destName ? 'Route to: '+destName : 'Your location';
   const openBtn = document.createElement('button'); openBtn.className='map-open-btn';
-  openBtn.textContent='Open Maps';
-  openBtn.onclick=()=>{
-    const url = destLat&&destLng
-      ? `https://www.google.com/maps/dir/${lat},${lng}/${destLat},${destLng}`
-      : `https://www.google.com/maps?q=${lat},${lng}`;
-    window.open(url,'_blank');
-  };
+  openBtn.textContent = 'Open Maps';
+  openBtn.onclick = () => window.open(
+    destLat&&destLng ? `https://www.google.com/maps/dir/${lat},${lng}/${destLat},${destLng}`
+                     : `https://www.google.com/maps?q=${lat},${lng}`, '_blank');
   hdr.appendChild(title); hdr.appendChild(openBtn);
-  const mapDiv=document.createElement('div'); mapDiv.className='map-container'; mapDiv.id=mapId;
-  const footer=document.createElement('div'); footer.className='map-footer';
-  footer.textContent=`You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  const mapDiv = document.createElement('div'); mapDiv.className='map-container'; mapDiv.id=mapId;
+  const footer = document.createElement('div'); footer.className='map-footer';
+  footer.textContent = `You: ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   card.appendChild(hdr); card.appendChild(mapDiv); card.appendChild(footer);
   bubble.appendChild(card); div.appendChild(bubble);
   anchor.parentNode.insertBefore(div, anchor);
   anchor.scrollIntoView({behavior:'smooth'});
-  setTimeout(()=>{
-    const map=L.map(mapId,{zoomControl:true,attributionControl:false}).setView([lat,lng],15);
+  setTimeout(() => {
+    const map = L.map(mapId,{zoomControl:true,attributionControl:false}).setView([lat,lng],15);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
-    const youIcon=L.divIcon({html:'<div style="width:16px;height:16px;background:#2196F3;border:3px solid white;border-radius:50%;box-shadow:0 0 0 6px rgba(33,150,243,0.3)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
+    const youIcon = L.divIcon({html:'<div style="width:16px;height:16px;background:#2196F3;border:3px solid white;border-radius:50%;box-shadow:0 0 0 6px rgba(33,150,243,0.3)"></div>',iconSize:[16,16],iconAnchor:[8,8],className:''});
     L.marker([lat,lng],{icon:youIcon}).addTo(map).bindPopup('You are here').openPopup();
     if (destLat&&destLng) {
-      const destIcon=L.divIcon({html:'<div style="width:20px;height:28px"><div style="width:20px;height:20px;background:#D0021B;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div></div>',iconSize:[20,28],iconAnchor:[10,28],className:''});
-      L.marker([destLat,destLng],{icon:destIcon}).addTo(map).bindPopup(destName||'Destination');
-      const line=L.polyline([[lat,lng],[destLat,destLng]],{color:'#D0021B',weight:4,opacity:0.8,dashArray:'10,6'}).addTo(map);
+      const dstIcon = L.divIcon({html:'<div style="width:22px;height:22px;background:#D0021B;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.5)"></div>',iconSize:[22,22],iconAnchor:[11,22],className:''});
+      L.marker([destLat,destLng],{icon:dstIcon}).addTo(map).bindPopup(destName||'Destination');
+      const line = L.polyline([[lat,lng],[destLat,destLng]],{color:'#D0021B',weight:4,opacity:0.8,dashArray:'10,6'}).addTo(map);
       map.fitBounds(line.getBounds(),{padding:[30,30]});
     }
-  },150);
+  }, 150);
 }
 
-async function geocodeAddress(address) {
+async function geocodeAddress(addr) {
   try {
-    const res=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
-    const data=await res.json();
-    if (data&&data.length>0) return {lat:parseFloat(data[0].lat),lng:parseFloat(data[0].lon),name:data[0].display_name};
+    const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1`);
+    const d = await r.json();
+    if (d&&d.length>0) return {lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon),name:d[0].display_name};
   } catch(e) {}
   return null;
 }
 
-// ── VOICE ──
-function setupVoice() {
-  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if (!SR) { document.getElementById('voiceBtn').innerHTML='⚠️ Use Chrome for voice'; return; }
-  recognition=new SR();
-  recognition.lang = micLangAutoMode ? 'en-US' : currentMicLang;
-  recognition.continuous=false; recognition.interimResults=false;
-  recognition.onresult=(e)=>{
-    document.getElementById('textInput').value=e.results[0][0].transcript;
-    stopListening(); sendText();
+// ── RECORDING — MediaRecorder (sends audio to backend for Whisper) ──
+async function toggleRecording() {
+  if (isRecording) { stopRecording(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(stream, {mimeType: getSupportedMimeType()});
+    mediaRecorder.ondataavailable = e => { if(e.data.size>0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      await processAudio();
+    };
+    mediaRecorder.start();
+    isRecording = true;
+    document.getElementById('voiceBtn').classList.add('recording');
+    document.getElementById('voiceBtnText').textContent = 'TAP TO STOP';
+  } catch(err) {
+    // Fallback to Web Speech API
+    useFallbackRecognition();
+  }
+}
+
+function getSupportedMimeType() {
+  const types = ['audio/webm;codecs=opus','audio/webm','audio/ogg','audio/mp4'];
+  for (const t of types) { if (MediaRecorder.isTypeSupported(t)) return t; }
+  return '';
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+    isRecording = false;
+    document.getElementById('voiceBtn').classList.remove('recording');
+    document.getElementById('voiceBtn').classList.add('processing');
+    document.getElementById('voiceBtnText').textContent = 'PROCESSING...';
+  }
+}
+
+async function processAudio() {
+  try {
+    const blob = new Blob(audioChunks, {type: audioChunks[0]?.type || 'audio/webm'});
+    const formData = new FormData();
+    formData.append('audio', blob, 'recording.webm');
+
+    const res = await fetch(`${API_BASE}/transcribe`, {method:'POST', body:formData});
+    const data = await res.json();
+
+    document.getElementById('voiceBtn').classList.remove('processing');
+    document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
+
+    if (data.fallback || !data.transcript) {
+      // Server has no Whisper key — fall back to Web Speech API
+      useFallbackRecognition();
+      return;
+    }
+    // Got transcript from Whisper!
+    document.getElementById('textInput').value = data.transcript;
+    if (data.language) lastDetectedLang = data.language.substring(0,2);
+    autoResize(document.getElementById('textInput'));
+    sendText();
+  } catch(e) {
+    document.getElementById('voiceBtn').classList.remove('processing');
+    document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
+    useFallbackRecognition();
+  }
+}
+
+// ── HANDS-FREE MODE — Voice Activity Detection ──
+let handsfreeOn = false;
+let hfStream = null;
+let hfAudioCtx = null;
+let hfAnalyser = null;
+let hfMediaRecorder = null;
+let hfChunks = [];
+let hfSilenceTimer = null;
+let hfVolTimer = null;
+let hfSpeaking = false;
+let hfWaiting = false; // true while AI is responding — don't listen
+
+const HF_SILENCE_MS = 1800;   // stop recording after 1.8s silence
+const HF_VOICE_THRESHOLD = 18; // volume threshold to start recording (0-255)
+const HF_MIN_SPEECH_MS = 400; // minimum speech duration to process
+
+async function toggleHandsfree() {
+  if (handsfreeOn) {
+    stopHandsfree();
+  } else {
+    await startHandsfree();
+  }
+}
+
+async function startHandsfree() {
+  try {
+    hfStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    addAIMsg('Microphone access denied. Please allow mic in browser settings.');
+    return;
+  }
+
+  // Setup Web Audio for volume detection
+  hfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = hfAudioCtx.createMediaStreamSource(hfStream);
+  hfAnalyser = hfAudioCtx.createAnalyser();
+  hfAnalyser.fftSize = 512;
+  hfAnalyser.smoothingTimeConstant = 0.3;
+  source.connect(hfAnalyser);
+
+  handsfreeOn = true;
+  hfSpeaking = false;
+  hfWaiting = false;
+
+  // Update UI
+  document.getElementById('handsfreeBtn').classList.add('on');
+  document.getElementById('handsfreeBtn').textContent = '🟢';
+  document.getElementById('hfBar').classList.add('on');
+  document.getElementById('voiceBtn').style.opacity = '0.4';
+  document.getElementById('voiceBtn').style.pointerEvents = 'none';
+  setHfState('listening', 'Listening... just speak anytime');
+
+  // Start volume monitoring loop
+  monitorVolume();
+
+  addAIMsg('Hands-free mode ON. I am always listening — just speak naturally!');
+}
+
+function stopHandsfree() {
+  handsfreeOn = false;
+  hfSpeaking = false;
+
+  if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+  if (hfVolTimer) { clearInterval(hfVolTimer); hfVolTimer = null; }
+  if (hfMediaRecorder && hfMediaRecorder.state !== 'inactive') {
+    hfMediaRecorder.stop();
+  }
+  if (hfStream) { hfStream.getTracks().forEach(t => t.stop()); hfStream = null; }
+  if (hfAudioCtx) { hfAudioCtx.close(); hfAudioCtx = null; }
+
+  document.getElementById('handsfreeBtn').classList.remove('on');
+  document.getElementById('handsfreeBtn').textContent = '🚗';
+  document.getElementById('hfBar').classList.remove('on');
+  document.getElementById('voiceBtn').style.opacity = '';
+  document.getElementById('voiceBtn').style.pointerEvents = '';
+}
+
+function setHfState(state, msg) {
+  const ind = document.getElementById('hfIndicator');
+  const status = document.getElementById('hfStatus');
+  ind.className = 'hf-indicator ' + state;
+  status.textContent = msg;
+}
+
+function monitorVolume() {
+  if (!handsfreeOn) return;
+  const data = new Uint8Array(hfAnalyser.frequencyBinCount);
+
+  hfVolTimer = setInterval(() => {
+    if (!handsfreeOn) { clearInterval(hfVolTimer); return; }
+    if (hfWaiting) return; // AI is speaking/processing, don't listen
+
+    hfAnalyser.getByteFrequencyData(data);
+    // Get average volume of mid frequencies (speech range)
+    const speechData = data.slice(2, 40);
+    const vol = speechData.reduce((a,b) => a+b, 0) / speechData.length;
+
+    // Update volume bar
+    document.getElementById('hfVol').style.width = Math.min(vol * 2, 100) + '%';
+
+    if (vol > HF_VOICE_THRESHOLD && !hfSpeaking) {
+      // Voice detected — start recording
+      startHfRecording();
+    } else if (vol <= HF_VOICE_THRESHOLD && hfSpeaking) {
+      // Silence detected — start silence timer
+      if (!hfSilenceTimer) {
+        hfSilenceTimer = setTimeout(() => {
+          if (hfSpeaking) stopHfRecording();
+        }, HF_SILENCE_MS);
+      }
+    } else if (vol > HF_VOICE_THRESHOLD && hfSpeaking) {
+      // Still speaking — cancel silence timer
+      if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+    }
+  }, 80);
+}
+
+function startHfRecording() {
+  if (hfSpeaking || !hfStream) return;
+  hfSpeaking = true;
+  hfChunks = [];
+
+  try {
+    hfMediaRecorder = new MediaRecorder(hfStream, { mimeType: getSupportedMimeType() });
+    hfMediaRecorder.ondataavailable = e => { if(e.data.size > 0) hfChunks.push(e.data); };
+    hfMediaRecorder.onstop = processHfAudio;
+    hfMediaRecorder.start(100);
+    setHfState('listening', 'Hearing you... keep talking');
+  } catch(e) {
+    hfSpeaking = false;
+  }
+}
+
+function stopHfRecording() {
+  if (!hfSpeaking || !hfMediaRecorder) return;
+  hfSpeaking = false;
+  if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+  if (hfMediaRecorder.state !== 'inactive') hfMediaRecorder.stop();
+  setHfState('processing', 'Processing...');
+}
+
+async function processHfAudio() {
+  if (hfChunks.length === 0) {
+    if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+    return;
+  }
+
+  hfWaiting = true; // pause listening while we process + AI replies
+  setHfState('processing', 'Processing your speech...');
+
+  const blob = new Blob(hfChunks, { type: hfChunks[0]?.type || 'audio/webm' });
+
+  // Try Whisper first, then fall back to Web Speech
+  try {
+    const formData = new FormData();
+    formData.append('audio', blob, 'hf.webm');
+    const res = await fetch(`${API_BASE}/transcribe`, { method:'POST', body:formData });
+    const data = await res.json();
+
+    if (!data.fallback && data.transcript && data.transcript.trim()) {
+      if (data.language) lastDetectedLang = data.language.substring(0,2);
+      document.getElementById('textInput').value = data.transcript;
+      setHfState('processing', 'AI thinking...');
+      await sendTextHandsfree(data.transcript);
+    } else {
+      // Whisper not available — use Web Speech fallback for handsfree
+      hfWaiting = false;
+      setHfState('listening', 'Listening... just speak anytime');
+    }
+  } catch(e) {
+    hfWaiting = false;
+    setHfState('listening', 'Listening... just speak anytime');
+  }
+}
+
+async function sendTextHandsfree(text) {
+  if (!text.trim()) {
+    hfWaiting = false;
+    setHfState('listening', 'Listening... just speak anytime');
+    return;
+  }
+
+  addUserMsg(text, null);
+  document.getElementById('textInput').value = '';
+
+  let userText = text;
+  if (currentLat && currentLng) userText += ` [DRIVER_GPS: ${currentLat.toFixed(6)},${currentLng.toFixed(6)}]`;
+
+  history.push({ role:'user', content:text });
+  showTyping();
+
+  try {
+    const res = await fetch(`${API_BASE}/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: history.slice(0,-1).concat([{role:'user',content:userText}]) })
+    });
+    const data = await res.json();
+    removeTyping();
+
+    if (!res.ok) {
+      addAIMsg('Error: ' + (data.detail || 'Server error.'));
+      hfWaiting = false;
+      if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+      return;
+    }
+
+    const reply = data.reply || 'Something went wrong.';
+    history.push({ role:'assistant', content:reply });
+    detectLang(reply);
+
+    if (data.dest_address && currentLat && currentLng) {
+      addAIMsg(reply);
+      const c = await geocodeAddress(data.dest_address);
+      if (c) showMap(currentLat, currentLng, c.lat, c.lng, data.dest_address);
+    } else if (data.show_my_location && currentLat && currentLng) {
+      addAIMsg(reply);
+      showMap(currentLat, currentLng, null, null, null);
+    } else {
+      addAIMsg(reply);
+    }
+
+    setHfState('speaking', 'AI is speaking...');
+    await speakAndWait(reply); // wait for speech to finish before listening again
+
+  } catch(err) {
+    removeTyping();
+    addAIMsg('Cannot reach server.');
+  }
+
+  // Resume listening after AI finishes speaking
+  hfWaiting = false;
+  if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+}
+
+// Speak and return a Promise that resolves when audio finishes
+async function speakAndWait(text) {
+  return new Promise(async (resolve) => {
+    stopSpeak();
+    if (!text.trim()) { resolve(); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/tts`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text, gender: voiceGender })
+      });
+      if (!res.ok) { resolve(); return; }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      document.getElementById('speakBar').classList.add('on');
+      document.getElementById('speakInfo').textContent =
+        voiceGender === 'female' ? 'Ava speaking...' : 'Andrew speaking...';
+
+      currentAudio.onended = () => {
+        document.getElementById('speakBar').classList.remove('on');
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        resolve();
+      };
+      currentAudio.onerror = () => { resolve(); };
+      await currentAudio.play();
+    } catch(e) { resolve(); }
+  });
+}
+
+// ── FALLBACK: Web Speech API with selected mic language ──
+function setupFallbackRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  recognition = new SR();
+  recognition.lang = currentMicLang;
+  recognition.continuous = false; recognition.interimResults = false;
+  recognition.onresult = e => {
+    document.getElementById('textInput').value = e.results[0][0].transcript;
+    stopFallback(); sendText();
   };
-  recognition.onerror=recognition.onend=stopListening;
+  recognition.onerror = recognition.onend = stopFallback;
 }
 
-function toggleVoice() {
-  if (isListening) { stopListening(); return; }
-  stopSpeak(); isListening=true;
-  try { recognition&&recognition.start(); } catch(e) {}
-  document.getElementById('voiceBtn').classList.add('listening');
-  document.getElementById('voiceBtnText').textContent = micLangAutoMode ? '🔴 AUTO DETECTING...' : '🔴 LISTENING...';
-}
-function stopListening() {
-  isListening=false;
-  try { recognition&&recognition.stop(); } catch(e) {}
-  document.getElementById('voiceBtn').classList.remove('listening');
-  document.getElementById('voiceBtnText').textContent='TAP TO SPEAK';
+function useFallbackRecognition() {
+  setupFallbackRecognition();
+  if (!recognition) { addAIMsg('Voice not supported. Please type instead.'); return; }
+  isRecording = true;
+  try { recognition.start(); } catch(e){}
+  document.getElementById('voiceBtn').classList.add('recording');
+  document.getElementById('voiceBtnText').textContent = '🔴 LISTENING...';
 }
 
+function stopFallback() {
+  isRecording = false;
+  try { recognition&&recognition.stop(); } catch(e){}
+  document.getElementById('voiceBtn').classList.remove('recording');
+  document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
+}
+
+// ── MISC ──
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
 function triggerCamera() { document.getElementById('fileInput').click(); }
 function handleFile(e) {
-  const file=e.target.files[0]; if (!file) return;
+  const file=e.target.files[0]; if(!file) return;
   const reader=new FileReader();
-  reader.onload=(ev)=>{
-    const dataUrl=ev.target.result;
-    pendingImageB64=dataUrl.split(',')[1]; pendingImageType=file.type||'image/jpeg';
-    document.getElementById('previewThumb').src=dataUrl;
+  reader.onload=ev=>{
+    pendingImageB64=ev.target.result.split(',')[1]; pendingImageType=file.type||'image/jpeg';
+    document.getElementById('previewThumb').src=ev.target.result;
     document.getElementById('imgPreview').classList.add('on');
     document.getElementById('camBtn').classList.add('has-img');
   };
@@ -473,7 +773,7 @@ function clearImg() {
   document.getElementById('previewThumb').src='';
 }
 
-async function sendQuick(text) { document.getElementById('textInput').value=text; await sendText(); }
+async function sendQuick(t) { document.getElementById('textInput').value=t; await sendText(); }
 
 async function sendText() {
   const input=document.getElementById('textInput');
@@ -487,7 +787,7 @@ async function sendText() {
   let userText=text;
   if (currentLat&&currentLng) userText+=` [DRIVER_GPS: ${currentLat.toFixed(6)},${currentLng.toFixed(6)}]`;
 
-  let userContent=hasImg?[
+  const userContent=hasImg?[
     {type:'image',source:{type:'base64',media_type:pendingImageType,data:pendingImageB64}},
     {type:'text',text:userText||'Analyze this image and guide me as a Ninja Van driver.'}
   ]:userText;
@@ -497,52 +797,42 @@ async function sendText() {
 
   try {
     const res=await fetch(`${API_BASE}/chat`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
+      method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({messages:history.slice(0,-1).concat([{role:'user',content:userContent}])})
     });
     const data=await res.json();
     removeTyping();
     if (!res.ok) { addAIMsg('Error: '+(data.detail||'Server error.')); return; }
     const reply=data.reply||'Something went wrong, try again!';
-    const destAddress=data.dest_address||null;
     history.push({role:'assistant',content:reply});
+    detectLang(reply);
 
-    // Detect language from reply for TTS
-    detectLangFromReply(reply);
-
-    if (destAddress&&currentLat&&currentLng) {
-      addAIMsg(reply);
-      speak(reply);
-      const coords=await geocodeAddress(destAddress);
-      if (coords) showMap(currentLat,currentLng,coords.lat,coords.lng,destAddress,null);
+    if (data.dest_address&&currentLat&&currentLng) {
+      addAIMsg(reply, true); speak(reply);
+      const c=await geocodeAddress(data.dest_address);
+      if (c) showMap(currentLat,currentLng,c.lat,c.lng,data.dest_address);
     } else if (data.show_my_location&&currentLat&&currentLng) {
-      addAIMsg(reply); speak(reply);
-      showMap(currentLat,currentLng,null,null,null,null);
+      addAIMsg(reply, true); speak(reply);
+      showMap(currentLat,currentLng,null,null,null);
     } else if ((text.toLowerCase().includes('where am i')||text.toLowerCase().includes('show map')||text.toLowerCase().includes('lost'))&&currentLat&&currentLng) {
-      addAIMsg(reply); speak(reply);
-      showMap(currentLat,currentLng,null,null,null,null);
+      addAIMsg(reply, true); speak(reply);
+      showMap(currentLat,currentLng,null,null,null);
     } else {
-      addAIMsg(reply); speak(reply);
+      addAIMsg(reply, false); speak(reply);
     }
   } catch(err) {
-    removeTyping();
-    addAIMsg('Cannot reach server. Check your connection.');
+    removeTyping(); addAIMsg('Cannot reach server. Check connection.');
   }
 }
 
-// Detect language from AI reply to set correct TTS voice
-function detectLangFromReply(text) {
-  // Simple unicode range detection
+function detectLang(text) {
   if (/[\u4e00-\u9fff]/.test(text)) { lastDetectedLang='zh'; return; }
   if (/[\u0e00-\u0e7f]/.test(text)) { lastDetectedLang='th'; return; }
   if (/[\uac00-\ud7af]/.test(text)) { lastDetectedLang='ko'; return; }
   if (/[\u3040-\u30ff]/.test(text)) { lastDetectedLang='ja'; return; }
-  if (/[\u0600-\u06ff]/.test(text)) { lastDetectedLang='ar'; return; }
-  // For latin-script languages, check common words
-  if (/\b(anda|saya|tidak|boleh|dengan|untuk)\b/i.test(text)) { lastDetectedLang='ms'; return; }
-  if (/\b(anda|saya|tidak|bisa|dengan|untuk|kamu)\b/i.test(text)) { lastDetectedLang='id'; return; }
-  if (/\b(ako|mo|ng|mga|ka|na|po|ito)\b/i.test(text)) { lastDetectedLang='fil'; return; }
+  if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(text)) { lastDetectedLang='ms'; return; }
+  if (/\b(kamu|anda|tidak|bisa|dengan|untuk|ya)\b/i.test(text)) { lastDetectedLang='id'; return; }
+  if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(text)) { lastDetectedLang='fil'; return; }
   if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(text)) { lastDetectedLang='vi'; return; }
   lastDetectedLang='en';
 }
@@ -559,10 +849,11 @@ function addUserMsg(text, imgSrc) {
   anchor.scrollIntoView({behavior:'smooth'});
 }
 
-function addAIMsg(text) {
+function addAIMsg(text, showDetected) {
   const anchor=document.getElementById('scrollEnd');
   const div=document.createElement('div'); div.className='msg ai';
-  div.innerHTML='<div class="msg-label">Senior Driver AI</div>';
+  let labelHtml='<div class="msg-label">Senior Driver AI</div>';
+  div.innerHTML=labelHtml;
   const bubble=document.createElement('div'); bubble.className='bubble';
   bubble.textContent=text;
   div.appendChild(bubble);
@@ -580,62 +871,63 @@ function showTyping() {
 }
 function removeTyping(){if(typingEl){typingEl.remove();typingEl=null;}}
 
-// ── TTS with gender + language matching ──
-function stripEmojis(text) {
-  return text
-    .replace(/[\u{1F000}-\u{1FFFF}]/gu,'')
-    .replace(/[\u{2600}-\u{27BF}]/gu,'')
-    .replace(/[\u{FE00}-\u{FEFF}]/gu,'')
-    .replace(/[\u{1F900}-\u{1FAFF}]/gu,'')
-    .replace(/[*_#\[\]]/g,'')
-    .replace(/\s+/g,' ').trim();
-}
+// ── EDGE TTS — en-US-AvaMultilingualNeural / AndrewMultilingualNeural ──
+let currentAudio = null;
 
-function speak(text) {
+async function speak(text) {
   stopSpeak();
-  if (!window.speechSynthesis) return;
-  const clean=stripEmojis(text);
-  if (!clean) return;
-  const u=new SpeechSynthesisUtterance(clean);
-  u.rate=1.05; u.pitch=voiceGender==='female'?1.2:0.85;
-  const voices=speechSynthesis.getVoices();
+  if (!text || !text.trim()) return;
 
-  // Find best voice: match language + gender preference
-  const targetLangs=LANG_TTS_MAP[lastDetectedLang]||LANG_TTS_MAP['en'];
-  let v=null;
+  document.getElementById('speakBar').classList.add('on');
+  document.getElementById('speakInfo').textContent =
+    voiceGender === 'female' ? 'Ava (Neural) speaking...' : 'Andrew (Neural) speaking...';
 
-  if (voiceGender==='male') {
-    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&/male/i.test(v.name)&&!/female/i.test(v.name))
-     ||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&!(/female/i.test(v.name)));
-  } else if (voiceGender==='female') {
-    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&/female/i.test(v.name))
-     ||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l))&&!(/male/i.test(v.name)));
-  } else {
-    v=voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l)));
+  try {
+    const res = await fetch(`${API_BASE}/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, gender: voiceGender })
+    });
+
+    if (!res.ok) throw new Error('TTS failed');
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    currentAudio = new Audio(url);
+
+    currentAudio.onended = () => {
+      document.getElementById('speakBar').classList.remove('on');
+      URL.revokeObjectURL(url);
+      currentAudio = null;
+    };
+    currentAudio.onerror = () => {
+      document.getElementById('speakBar').classList.remove('on');
+      currentAudio = null;
+    };
+
+    await currentAudio.play();
+
+  } catch(e) {
+    // Fallback to browser TTS if Edge TTS fails
+    document.getElementById('speakBar').classList.remove('on');
+    console.warn('Edge TTS failed, using browser fallback:', e);
+    const u = new SpeechSynthesisUtterance(text.replace(/[\u{1F000}-\u{1FFFF}]/gu,'').trim());
+    u.onstart = () => document.getElementById('speakBar').classList.add('on');
+    u.onend = () => document.getElementById('speakBar').classList.remove('on');
+    speechSynthesis.speak(u);
   }
-
-  // Fallback to any matching language, then any English
-  v=v||voices.find(v=>targetLangs.some(l=>v.lang.startsWith(l)))
-    ||voices.find(v=>v.lang.startsWith('en'))
-    ||voices[0];
-
-  if (v) {
-    u.voice=v;
-    document.getElementById('speakLang').textContent='Speaking: '+v.name.substring(0,20);
-  }
-
-  u.onstart=()=>document.getElementById('speakBar').classList.add('on');
-  u.onend=u.onerror=()=>document.getElementById('speakBar').classList.remove('on');
-  speechSynthesis.speak(u);
 }
 
 function stopSpeak() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
   if (window.speechSynthesis) speechSynthesis.cancel();
   document.getElementById('speakBar').classList.remove('on');
 }
 
-// Init
-setupVoice();
+setupFallbackRecognition();
 if (window.speechSynthesis) speechSynthesis.onvoiceschanged=()=>{};
 </script>
 </body>
