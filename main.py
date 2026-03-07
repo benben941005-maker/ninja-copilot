@@ -1,24 +1,21 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, StreamingResponse, Response
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
-import anthropic
+from groq import Groq
 import os
-from typing import List
-import io
-import re
+from typing import List, Union, Optional
 
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-# Voice mapping — Ava is multilingual and handles all SEA languages
-VOICE_MAP = {
-    "female": "en-US-AvaMultilingualNeural",
-    "male":   "en-US-AndrewMultilingualNeural",
-}
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 
 SYSTEM_PROMPT = """You are a seasoned Ninja Van Senior Driver with 10+ years of last-mile delivery experience across Southeast Asia. You talk like a real senior driver — casual, confident, street-smart. You are the driver's trusted buddy riding shotgun, not a corporate bot.
 
@@ -31,7 +28,7 @@ Your expertise:
 
 GPS & NAVIGATION:
 - If the driver's message contains [DRIVER_GPS: lat,lng], you know their exact location
-- When a driver mentions a delivery address or says they are lost, extract the destination
+- When a driver mentions a delivery address or says they are lost, extract the destination address
 
 When given an IMAGE:
 - ADDRESS/building/street sign → give navigation guidance
@@ -41,28 +38,24 @@ When given an IMAGE:
 
 CRITICAL LANGUAGE RULE:
 - ALWAYS reply in EXACTLY the same language the driver used
-- If Malay reply Malay. Chinese reply Chinese. Thai reply Thai. Etc.
+- If Malay → reply Malay. Chinese → reply Chinese. Thai → reply Thai. Tamil → reply Tamil. English → reply English.
 - Never switch languages unless the driver switches first
 - Be casual and natural like a local coworker
 
 IMPORTANT RESPONSE FORMAT:
-- Do NOT use emojis — they get read aloud by voice
-- Plain text only, no markdown symbols
+- Do NOT use emojis
+- Plain text only
 - SHORT and ACTIONABLE — max 3 steps
 - Encouraging tone
 
 SPECIAL TAGS (add on new line when relevant):
-- Navigation needed: [NAVIGATE_TO: full address]
-- Show location: [SHOW_MY_LOCATION]"""
+- If driver needs navigation: [NAVIGATE_TO: full address]
+- If driver wants to see location: [SHOW_MY_LOCATION]
+"""
 
 
 class ChatRequest(BaseModel):
     messages: List[dict]
-
-
-class TTSRequest(BaseModel):
-    text: str
-    gender: str = "female"  # "female" = Ava, "male" = Andrew
 
 
 @app.get("/")
@@ -75,98 +68,87 @@ async def health():
     return {"status": "ok"}
 
 
-@app.post("/tts")
-async def tts(request: TTSRequest):
-    """Generate speech using Edge TTS — en-US-AvaMultilingualNeural or AndrewMultilingualNeural"""
-    try:
-        import edge_tts
+def normalize_content_for_model(content: Union[str, list]) -> str:
+    """
+    Convert frontend message content into a single text string.
+    Keeps image hints as text markers since this free version does not do true vision parsing.
+    """
+    if isinstance(content, str):
+        return content
 
-        voice = VOICE_MAP.get(request.gender, VOICE_MAP["female"])
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            item_type = item.get("type")
 
-        # Strip emojis and markdown from text before speaking
-        clean = re.sub(r'[\U00010000-\U0010ffff]', '', request.text)
-        clean = re.sub(r'[*_#\[\]]', '', clean)
-        clean = re.sub(r'\s+', ' ', clean).strip()
+            if item_type == "text":
+                parts.append(item.get("text", ""))
 
-        if not clean:
-            raise HTTPException(status_code=400, detail="Empty text")
+            elif item_type == "image":
+                parts.append(
+                    "[IMAGE ATTACHED: The driver sent an image. "
+                    "If the user message mentions address, signboard, parcel damage, route, or note, "
+                    "respond as helpfully as possible based on their text description.]"
+                )
 
-        # Generate audio in memory
-        communicate = edge_tts.Communicate(clean, voice)
-        audio_buffer = io.BytesIO()
+        return "\n".join(p for p in parts if p).strip()
 
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_buffer.write(chunk["data"])
-
-        audio_buffer.seek(0)
-        audio_data = audio_buffer.read()
-
-        if not audio_data:
-            raise HTTPException(status_code=500, detail="No audio generated")
-
-        return Response(
-            content=audio_data,
-            media_type="audio/mpeg",
-            headers={"Cache-Control": "no-cache"}
-        )
-
-    except ImportError:
-        raise HTTPException(status_code=500, detail="edge-tts not installed")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"transcript": "", "language": "en", "fallback": True}
-    try:
-        import httpx
-        audio_data = await audio.read()
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {openai_key}"},
-                files={"file": (audio.filename or "audio.webm", audio_data, audio.content_type or "audio/webm")},
-                data={"model": "whisper-1", "response_format": "verbose_json"}
-            )
-            result = response.json()
-            return {"transcript": result.get("text", ""), "language": result.get("language", "en"), "fallback": False}
-    except Exception as e:
-        return {"transcript": "", "language": "en", "fallback": True}
+    return str(content)
 
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="API key not configured")
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured")
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    client = Groq(api_key=GROQ_API_KEY)
 
     try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=request.messages,
+        transformed_messages = []
+
+        for msg in request.messages:
+            role = msg.get("role", "user")
+            content = normalize_content_for_model(msg.get("content", ""))
+
+            # Map assistant role safely
+            if role not in ["user", "assistant", "system"]:
+                role = "user"
+
+            transformed_messages.append({
+                "role": role,
+                "content": content
+            })
+
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                *transformed_messages
+            ],
+            temperature=0.3,
+            max_tokens=300,
         )
-        full_text = response.content[0].text
+
+        full_text = (response.choices[0].message.content or "").strip()
+
         dest_address = None
         show_my_location = False
         reply_text = full_text
 
         if "[NAVIGATE_TO:" in full_text:
-            parts = full_text.split("[NAVIGATE_TO:")
+            parts = full_text.split("[NAVIGATE_TO:", 1)
             reply_text = parts[0].strip()
-            dest_address = parts[1].split("]")[0].strip()
+            dest_address = parts[1].split("]", 1)[0].strip()
 
-        if "[SHOW_MY_LOCATION]" in full_text:
-            reply_text = full_text.replace("[SHOW_MY_LOCATION]", "").strip()
+        if "[SHOW_MY_LOCATION]" in reply_text:
+            reply_text = reply_text.replace("[SHOW_MY_LOCATION]", "").strip()
             show_my_location = True
 
-        return {"reply": reply_text, "dest_address": dest_address, "show_my_location": show_my_location}
+        return {
+            "reply": reply_text,
+            "dest_address": dest_address,
+            "show_my_location": show_my_location
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
