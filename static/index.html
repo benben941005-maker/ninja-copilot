@@ -486,7 +486,7 @@ function hfListen() {
     const transcript = Array.from(e.results).map(r=>r[0].transcript).join(' ').trim();
     if (!transcript) { hfListen(); return; }
     hfBusy = true;
-    setHF('thinking', 'Heard: "' + transcript.substring(0,35) + (transcript.length>35?'...":'"''));
+    setHF('thinking', 'Heard: ' + transcript.substring(0,35) + (transcript.length>35?'...':''));
     await hfRespond(transcript);
     hfBusy = false;
     if (handsfreeOn) { setHF('listening','Listening... just speak'); hfListen(); }
