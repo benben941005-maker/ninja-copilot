@@ -1,6 +1,7 @@
-fastapi
-uvicorn[standard]
+fastapi==0.111.0
+uvicorn[standard]==0.29.0
 anthropic
 python-multipart
 httpx
 edge-tts
+websockets
