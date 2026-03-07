@@ -119,6 +119,40 @@
   .voice-btn.recording { background:#0a0a0a; border:2px solid #ff4444; animation:pulse 1s infinite; }
   .voice-btn.processing { background:#0a0a0a; border:2px solid var(--blue); }
   @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(208,2,27,0.5)} 50%{box-shadow:0 0 0 6px rgba(208,2,27,0)} }
+
+  .handsfree-btn {
+    width:52px; height:52px; border-radius:14px; flex-shrink:0;
+    background:var(--card); border:1px solid var(--border);
+    font-size:22px; cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.2s;
+  }
+  .handsfree-btn.on {
+    background:rgba(0,200,83,0.2); border-color:var(--green);
+    animation:hf-pulse 2s infinite;
+  }
+  @keyframes hf-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(0,200,83,0.4)} 50%{box-shadow:0 0 0 8px rgba(0,200,83,0)} }
+
+  /* HANDSFREE STATUS BAR */
+  .hf-bar {
+    display:none; align-items:center; gap:10px;
+    padding:8px 16px;
+    background:rgba(0,200,83,0.06);
+    border-bottom:1px solid rgba(0,200,83,0.15);
+    flex-shrink:0;
+  }
+  .hf-bar.on { display:flex; }
+  .hf-indicator {
+    width:10px; height:10px; border-radius:50%; background:var(--muted);
+    flex-shrink:0; transition:background 0.2s;
+  }
+  .hf-indicator.listening { background:var(--green); animation:blink 1s infinite; }
+  .hf-indicator.speaking { background:var(--blue); animation:blink 0.5s infinite; }
+  .hf-indicator.processing { background:#ff9800; animation:blink 0.3s infinite; }
+  .hf-status { font-size:12px; color:var(--muted); flex:1; }
+  .hf-vol-bar { width:60px; height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .hf-vol-fill { height:100%; background:var(--green); border-radius:2px; width:0%; transition:width 0.05s; }
+  .hf-stop { background:none; border:1px solid #444; color:#999; border-radius:8px; padding:3px 9px; font-size:11px; cursor:pointer; }
+
   #fileInput { display:none; }
 
   .leaflet-container { background:#1a1a1a !important; }
@@ -176,9 +210,17 @@
 <div class="chat" id="chat">
   <div class="msg ai">
     <div class="msg-label">Senior Driver AI</div>
-    <div class="bubble">Yo! I'm your AI Senior Driver. Just speak naturally in ANY language and I will understand and reply back in your language automatically.<br><br>Tap settings to choose male or female voice. Enable GPS with the pin button for live maps!</div>
+    <div class="bubble">Yo! I'm your AI Senior Driver. Just speak naturally in ANY language and I will understand and reply back in your language automatically.<br><br>Tap the car button <strong>🚗</strong> for hands-free mode — I will listen automatically without you needing to tap anything!</div>
   </div>
   <div class="scroll-end" id="scrollEnd"></div>
+</div>
+
+<!-- HANDSFREE BAR -->
+<div class="hf-bar" id="hfBar">
+  <div class="hf-indicator" id="hfIndicator"></div>
+  <span class="hf-status" id="hfStatus">Hands-free ready — just speak anytime</span>
+  <div class="hf-vol-bar"><div class="hf-vol-fill" id="hfVol"></div></div>
+  <button class="hf-stop" onclick="toggleHandsfree()">Stop</button>
 </div>
 
 <div class="speak-bar" id="speakBar">
@@ -206,6 +248,9 @@
   <div class="btn-row">
     <button class="voice-btn" id="voiceBtn" onclick="toggleRecording()">
       <span>🎙️</span><span id="voiceBtnText">TAP TO SPEAK</span>
+    </button>
+    <button class="handsfree-btn" id="handsfreeBtn" onclick="toggleHandsfree()" title="Hands-free mode">
+      🚗
     </button>
   </div>
 </div>
@@ -409,6 +454,272 @@ async function processAudio() {
     document.getElementById('voiceBtnText').textContent = 'TAP TO SPEAK';
     useFallbackRecognition();
   }
+}
+
+// ── HANDS-FREE MODE — Voice Activity Detection ──
+let handsfreeOn = false;
+let hfStream = null;
+let hfAudioCtx = null;
+let hfAnalyser = null;
+let hfMediaRecorder = null;
+let hfChunks = [];
+let hfSilenceTimer = null;
+let hfVolTimer = null;
+let hfSpeaking = false;
+let hfWaiting = false; // true while AI is responding — don't listen
+
+const HF_SILENCE_MS = 1800;   // stop recording after 1.8s silence
+const HF_VOICE_THRESHOLD = 18; // volume threshold to start recording (0-255)
+const HF_MIN_SPEECH_MS = 400; // minimum speech duration to process
+
+async function toggleHandsfree() {
+  if (handsfreeOn) {
+    stopHandsfree();
+  } else {
+    await startHandsfree();
+  }
+}
+
+async function startHandsfree() {
+  try {
+    hfStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  } catch(e) {
+    addAIMsg('Microphone access denied. Please allow mic in browser settings.');
+    return;
+  }
+
+  // Setup Web Audio for volume detection
+  hfAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const source = hfAudioCtx.createMediaStreamSource(hfStream);
+  hfAnalyser = hfAudioCtx.createAnalyser();
+  hfAnalyser.fftSize = 512;
+  hfAnalyser.smoothingTimeConstant = 0.3;
+  source.connect(hfAnalyser);
+
+  handsfreeOn = true;
+  hfSpeaking = false;
+  hfWaiting = false;
+
+  // Update UI
+  document.getElementById('handsfreeBtn').classList.add('on');
+  document.getElementById('handsfreeBtn').textContent = '🟢';
+  document.getElementById('hfBar').classList.add('on');
+  document.getElementById('voiceBtn').style.opacity = '0.4';
+  document.getElementById('voiceBtn').style.pointerEvents = 'none';
+  setHfState('listening', 'Listening... just speak anytime');
+
+  // Start volume monitoring loop
+  monitorVolume();
+
+  addAIMsg('Hands-free mode ON. I am always listening — just speak naturally!');
+}
+
+function stopHandsfree() {
+  handsfreeOn = false;
+  hfSpeaking = false;
+
+  if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+  if (hfVolTimer) { clearInterval(hfVolTimer); hfVolTimer = null; }
+  if (hfMediaRecorder && hfMediaRecorder.state !== 'inactive') {
+    hfMediaRecorder.stop();
+  }
+  if (hfStream) { hfStream.getTracks().forEach(t => t.stop()); hfStream = null; }
+  if (hfAudioCtx) { hfAudioCtx.close(); hfAudioCtx = null; }
+
+  document.getElementById('handsfreeBtn').classList.remove('on');
+  document.getElementById('handsfreeBtn').textContent = '🚗';
+  document.getElementById('hfBar').classList.remove('on');
+  document.getElementById('voiceBtn').style.opacity = '';
+  document.getElementById('voiceBtn').style.pointerEvents = '';
+}
+
+function setHfState(state, msg) {
+  const ind = document.getElementById('hfIndicator');
+  const status = document.getElementById('hfStatus');
+  ind.className = 'hf-indicator ' + state;
+  status.textContent = msg;
+}
+
+function monitorVolume() {
+  if (!handsfreeOn) return;
+  const data = new Uint8Array(hfAnalyser.frequencyBinCount);
+
+  hfVolTimer = setInterval(() => {
+    if (!handsfreeOn) { clearInterval(hfVolTimer); return; }
+    if (hfWaiting) return; // AI is speaking/processing, don't listen
+
+    hfAnalyser.getByteFrequencyData(data);
+    // Get average volume of mid frequencies (speech range)
+    const speechData = data.slice(2, 40);
+    const vol = speechData.reduce((a,b) => a+b, 0) / speechData.length;
+
+    // Update volume bar
+    document.getElementById('hfVol').style.width = Math.min(vol * 2, 100) + '%';
+
+    if (vol > HF_VOICE_THRESHOLD && !hfSpeaking) {
+      // Voice detected — start recording
+      startHfRecording();
+    } else if (vol <= HF_VOICE_THRESHOLD && hfSpeaking) {
+      // Silence detected — start silence timer
+      if (!hfSilenceTimer) {
+        hfSilenceTimer = setTimeout(() => {
+          if (hfSpeaking) stopHfRecording();
+        }, HF_SILENCE_MS);
+      }
+    } else if (vol > HF_VOICE_THRESHOLD && hfSpeaking) {
+      // Still speaking — cancel silence timer
+      if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+    }
+  }, 80);
+}
+
+function startHfRecording() {
+  if (hfSpeaking || !hfStream) return;
+  hfSpeaking = true;
+  hfChunks = [];
+
+  try {
+    hfMediaRecorder = new MediaRecorder(hfStream, { mimeType: getSupportedMimeType() });
+    hfMediaRecorder.ondataavailable = e => { if(e.data.size > 0) hfChunks.push(e.data); };
+    hfMediaRecorder.onstop = processHfAudio;
+    hfMediaRecorder.start(100);
+    setHfState('listening', 'Hearing you... keep talking');
+  } catch(e) {
+    hfSpeaking = false;
+  }
+}
+
+function stopHfRecording() {
+  if (!hfSpeaking || !hfMediaRecorder) return;
+  hfSpeaking = false;
+  if (hfSilenceTimer) { clearTimeout(hfSilenceTimer); hfSilenceTimer = null; }
+  if (hfMediaRecorder.state !== 'inactive') hfMediaRecorder.stop();
+  setHfState('processing', 'Processing...');
+}
+
+async function processHfAudio() {
+  if (hfChunks.length === 0) {
+    if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+    return;
+  }
+
+  hfWaiting = true; // pause listening while we process + AI replies
+  setHfState('processing', 'Processing your speech...');
+
+  const blob = new Blob(hfChunks, { type: hfChunks[0]?.type || 'audio/webm' });
+
+  // Try Whisper first, then fall back to Web Speech
+  try {
+    const formData = new FormData();
+    formData.append('audio', blob, 'hf.webm');
+    const res = await fetch(`${API_BASE}/transcribe`, { method:'POST', body:formData });
+    const data = await res.json();
+
+    if (!data.fallback && data.transcript && data.transcript.trim()) {
+      if (data.language) lastDetectedLang = data.language.substring(0,2);
+      document.getElementById('textInput').value = data.transcript;
+      setHfState('processing', 'AI thinking...');
+      await sendTextHandsfree(data.transcript);
+    } else {
+      // Whisper not available — use Web Speech fallback for handsfree
+      hfWaiting = false;
+      setHfState('listening', 'Listening... just speak anytime');
+    }
+  } catch(e) {
+    hfWaiting = false;
+    setHfState('listening', 'Listening... just speak anytime');
+  }
+}
+
+async function sendTextHandsfree(text) {
+  if (!text.trim()) {
+    hfWaiting = false;
+    setHfState('listening', 'Listening... just speak anytime');
+    return;
+  }
+
+  addUserMsg(text, null);
+  document.getElementById('textInput').value = '';
+
+  let userText = text;
+  if (currentLat && currentLng) userText += ` [DRIVER_GPS: ${currentLat.toFixed(6)},${currentLng.toFixed(6)}]`;
+
+  history.push({ role:'user', content:text });
+  showTyping();
+
+  try {
+    const res = await fetch(`${API_BASE}/chat`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ messages: history.slice(0,-1).concat([{role:'user',content:userText}]) })
+    });
+    const data = await res.json();
+    removeTyping();
+
+    if (!res.ok) {
+      addAIMsg('Error: ' + (data.detail || 'Server error.'));
+      hfWaiting = false;
+      if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+      return;
+    }
+
+    const reply = data.reply || 'Something went wrong.';
+    history.push({ role:'assistant', content:reply });
+    detectLang(reply);
+
+    if (data.dest_address && currentLat && currentLng) {
+      addAIMsg(reply);
+      const c = await geocodeAddress(data.dest_address);
+      if (c) showMap(currentLat, currentLng, c.lat, c.lng, data.dest_address);
+    } else if (data.show_my_location && currentLat && currentLng) {
+      addAIMsg(reply);
+      showMap(currentLat, currentLng, null, null, null);
+    } else {
+      addAIMsg(reply);
+    }
+
+    setHfState('speaking', 'AI is speaking...');
+    await speakAndWait(reply); // wait for speech to finish before listening again
+
+  } catch(err) {
+    removeTyping();
+    addAIMsg('Cannot reach server.');
+  }
+
+  // Resume listening after AI finishes speaking
+  hfWaiting = false;
+  if (handsfreeOn) setHfState('listening', 'Listening... just speak anytime');
+}
+
+// Speak and return a Promise that resolves when audio finishes
+async function speakAndWait(text) {
+  return new Promise(async (resolve) => {
+    stopSpeak();
+    if (!text.trim()) { resolve(); return; }
+
+    try {
+      const res = await fetch(`${API_BASE}/tts`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text, gender: voiceGender })
+      });
+      if (!res.ok) { resolve(); return; }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      currentAudio = new Audio(url);
+      document.getElementById('speakBar').classList.add('on');
+      document.getElementById('speakInfo').textContent =
+        voiceGender === 'female' ? 'Ava speaking...' : 'Andrew speaking...';
+
+      currentAudio.onended = () => {
+        document.getElementById('speakBar').classList.remove('on');
+        URL.revokeObjectURL(url);
+        currentAudio = null;
+        resolve();
+      };
+      currentAudio.onerror = () => { resolve(); };
+      await currentAudio.play();
+    } catch(e) { resolve(); }
+  });
 }
 
 // ── FALLBACK: Web Speech API with selected mic language ──
