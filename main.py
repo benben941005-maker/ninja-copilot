@@ -1,16 +1,24 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse, Response
 from pydantic import BaseModel
 import anthropic
 import os
 from typing import List
+import io
+import re
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+
+# Voice mapping — Ava is multilingual and handles all SEA languages
+VOICE_MAP = {
+    "female": "en-US-AvaMultilingualNeural",
+    "male":   "en-US-AndrewMultilingualNeural",
+}
 
 SYSTEM_PROMPT = """You are a seasoned Ninja Van Senior Driver with 10+ years of last-mile delivery experience across Southeast Asia. You talk like a real senior driver — casual, confident, street-smart. You are the driver's trusted buddy riding shotgun, not a corporate bot.
 
@@ -23,7 +31,7 @@ Your expertise:
 
 GPS & NAVIGATION:
 - If the driver's message contains [DRIVER_GPS: lat,lng], you know their exact location
-- When a driver mentions a delivery address or says they are lost, extract the destination address
+- When a driver mentions a delivery address or says they are lost, extract the destination
 
 When given an IMAGE:
 - ADDRESS/building/street sign → give navigation guidance
@@ -32,24 +40,29 @@ When given an IMAGE:
 - CUSTOMER NOTE → interpret and advise
 
 CRITICAL LANGUAGE RULE:
-- ALWAYS detect what language the driver is speaking and reply in EXACTLY that same language
-- If they speak Malay, reply in Malay. Chinese, reply in Chinese. Thai, reply in Thai. Etc.
+- ALWAYS reply in EXACTLY the same language the driver used
+- If Malay reply Malay. Chinese reply Chinese. Thai reply Thai. Etc.
 - Never switch languages unless the driver switches first
-- Be natural and casual in their language like a local coworker
+- Be casual and natural like a local coworker
 
 IMPORTANT RESPONSE FORMAT:
 - Do NOT use emojis — they get read aloud by voice
-- Plain text only, no markdown asterisks or symbols  
+- Plain text only, no markdown symbols
 - SHORT and ACTIONABLE — max 3 steps
-- Casual and encouraging tone
+- Encouraging tone
 
 SPECIAL TAGS (add on new line when relevant):
-- If driver needs navigation: [NAVIGATE_TO: full address]
-- If driver wants to see location: [SHOW_MY_LOCATION]"""
+- Navigation needed: [NAVIGATE_TO: full address]
+- Show location: [SHOW_MY_LOCATION]"""
 
 
 class ChatRequest(BaseModel):
     messages: List[dict]
+
+
+class TTSRequest(BaseModel):
+    text: str
+    gender: str = "female"  # "female" = Ava, "male" = Andrew
 
 
 @app.get("/")
@@ -60,6 +73,69 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/tts")
+async def tts(request: TTSRequest):
+    """Generate speech using Edge TTS — en-US-AvaMultilingualNeural or AndrewMultilingualNeural"""
+    try:
+        import edge_tts
+
+        voice = VOICE_MAP.get(request.gender, VOICE_MAP["female"])
+
+        # Strip emojis and markdown from text before speaking
+        clean = re.sub(r'[\U00010000-\U0010ffff]', '', request.text)
+        clean = re.sub(r'[*_#\[\]]', '', clean)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+
+        if not clean:
+            raise HTTPException(status_code=400, detail="Empty text")
+
+        # Generate audio in memory
+        communicate = edge_tts.Communicate(clean, voice)
+        audio_buffer = io.BytesIO()
+
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_buffer.write(chunk["data"])
+
+        audio_buffer.seek(0)
+        audio_data = audio_buffer.read()
+
+        if not audio_data:
+            raise HTTPException(status_code=500, detail="No audio generated")
+
+        return Response(
+            content=audio_data,
+            media_type="audio/mpeg",
+            headers={"Cache-Control": "no-cache"}
+        )
+
+    except ImportError:
+        raise HTTPException(status_code=500, detail="edge-tts not installed")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/transcribe")
+async def transcribe(audio: UploadFile = File(...)):
+    openai_key = os.environ.get("OPENAI_API_KEY", "")
+    if not openai_key:
+        return {"transcript": "", "language": "en", "fallback": True}
+    try:
+        import httpx
+        audio_data = await audio.read()
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.post(
+                "https://api.openai.com/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {openai_key}"},
+                files={"file": (audio.filename or "audio.webm", audio_data, audio.content_type or "audio/webm")},
+                data={"model": "whisper-1", "response_format": "verbose_json"}
+            )
+            result = response.json()
+            return {"transcript": result.get("text", ""), "language": result.get("language", "en"), "fallback": False}
+    except Exception as e:
+        return {"transcript": "", "language": "en", "fallback": True}
 
 
 @app.post("/chat")
@@ -77,7 +153,6 @@ async def chat(request: ChatRequest):
             messages=request.messages,
         )
         full_text = response.content[0].text
-
         dest_address = None
         show_my_location = False
         reply_text = full_text
@@ -91,11 +166,7 @@ async def chat(request: ChatRequest):
             reply_text = full_text.replace("[SHOW_MY_LOCATION]", "").strip()
             show_my_location = True
 
-        return {
-            "reply": reply_text,
-            "dest_address": dest_address,
-            "show_my_location": show_my_location
-        }
+        return {"reply": reply_text, "dest_address": dest_address, "show_my_location": show_my_location}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
