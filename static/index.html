@@ -111,6 +111,16 @@ body { background:var(--black); color:var(--text); font-family:'Inter',sans-seri
 .text-input::placeholder { color:var(--muted); }
 .cam-btn { width:44px; height:44px; border-radius:50%; background:var(--card); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:20px; cursor:pointer; flex-shrink:0; }
 .cam-btn.has-img { background:rgba(33,150,243,0.2); border-color:var(--blue); }
+.scan-btn {
+  width:56px; flex-shrink:0;
+  background:rgba(33,150,243,0.15); border:1px solid rgba(33,150,243,0.4);
+  border-radius:14px; color:var(--blue); font-size:20px; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:6px 0; font-family:'Inter',sans-serif; font-weight:600;
+  transition:all 0.15s;
+}
+.scan-btn:active { background:rgba(33,150,243,0.35); }
+.scan-btn.has-img { background:rgba(33,150,243,0.3); border-color:var(--blue); }
 .send-btn { width:44px; height:44px; border-radius:50%; background:var(--red); border:none; display:flex; align-items:center; justify-content:center; font-size:18px; cursor:pointer; flex-shrink:0; }
 .btn-row { display:flex; gap:8px; }
 .voice-btn { flex:1; background:linear-gradient(135deg,var(--red),var(--dark-red)); border:none; border-radius:14px; padding:13px; color:white; font-family:'Rajdhani',sans-serif; font-size:17px; font-weight:700; letter-spacing:1px; cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; }
@@ -133,7 +143,6 @@ body { background:var(--black); color:var(--text); font-family:'Inter',sans-seri
     <div class="subtitle">AI Senior Driver Assistant</div>
   </div>
   <div class="header-btns">
-    <button class="hbtn" id="gpsBtn" onclick="toggleGPS()">📍</button>
     <button class="hbtn" id="settingsBtn" onclick="toggleSettings()">⚙️</button>
   </div>
 </div>
@@ -178,7 +187,9 @@ body { background:var(--black); color:var(--text); font-family:'Inter',sans-seri
 <div class="chat" id="chat">
   <div class="msg ai">
     <div class="msg-label">Senior Driver AI</div>
-    <div class="bubble">Yo! I am your AI Senior Driver buddy. Tap the car button <b>🚗</b> for hands-free mode — I will listen automatically and talk back to you. No need to tap anything while driving!</div>
+    <div class="bubble">Yo! I am your AI Senior Driver buddy. Here is what I can do:<br><br>
+📷 <b>SCAN</b> — Tap the scan button, photo the address label on the parcel. I read it and open Google Maps navigation automatically.<br><br>
+🚗 <b>Hands-free</b> — Tap the car button. I listen, you talk, I reply with voice. No tapping needed while driving!</div>
   </div>
   <div class="scroll-end" id="scrollEnd"></div>
 </div>
@@ -202,17 +213,19 @@ body { background:var(--black); color:var(--text); font-family:'Inter',sans-seri
         oninput="autoResize(this)"
         onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendText()}"></textarea>
     </div>
-    <button class="cam-btn" id="camBtn" onclick="triggerCamera()">📷</button>
     <button class="send-btn" onclick="sendText()">➤</button>
   </div>
   <div class="btn-row">
     <button class="voice-btn" id="voiceBtn" onclick="tapToSpeak()">
       <span>🎙️</span><span id="voiceBtnText">TAP TO SPEAK</span>
     </button>
+    <button class="scan-btn" id="scanBtn" onclick="triggerCamera()" title="Scan address label">
+      📷<div style="font-size:9px;margin-top:2px;letter-spacing:0.5px">SCAN</div>
+    </button>
     <button class="handsfree-btn" id="handsfreeBtn" onclick="toggleHandsfree()">🚗</button>
   </div>
 </div>
-<input type="file" id="fileInput" accept="image/*" capture="environment" onchange="handleFile(event)">
+<input type="file" id="fileInput" accept="image/*" onchange="handleFile(event)">
 
 <script>
 const API_BASE = window.location.origin;
@@ -336,6 +349,208 @@ async function geocodeAddress(addr) {
     if(d&&d.length>0) return {lat:parseFloat(d[0].lat),lng:parseFloat(d[0].lon),name:d[0].display_name};
   } catch(e){}
   return null;
+}
+
+// ─── NAVIGATION — GPS + OSRM route + spoken directions ──
+let navActive = false;
+let navSteps = [];
+let navStepIndex = 0;
+let navWatchId = null;
+
+async function openGoogleMaps(address) {
+  // Show nav card immediately
+  showNavCard(address);
+
+  // Try to get GPS for real routing
+  if (!navigator.geolocation) {
+    speak('Destination is ' + address + '. Tap Open Maps for directions.');
+    return;
+  }
+
+  speak('Got it. Getting your location for the route.');
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+
+    // Geocode destination
+    const dest = await geocodeAddress(address);
+    if (!dest) {
+      speak('Address found. Tap Open Maps button for turn by turn directions.');
+      return;
+    }
+
+    // Fetch route from OSRM (free, no API key needed)
+    try {
+      const routeRes = await fetch(
+        `https://router.project-osrm.org/route/v1/driving/${lng},${lat};${dest.lng},${dest.lat}?steps=true&geometries=geojson&overview=full`
+      );
+      const routeData = await routeRes.json();
+
+      if (routeData.code !== 'Ok' || !routeData.routes.length) {
+        speak('Route found. Tap Open Maps for directions to ' + address);
+        return;
+      }
+
+      const route = routeData.routes[0];
+      const steps = route.legs[0].steps;
+      const distKm = (route.distance / 1000).toFixed(1);
+      const mins = Math.round(route.duration / 60);
+
+      // Extract clean spoken directions
+      navSteps = steps.map(s => cleanNavInstruction(s.maneuver, s.name, s.distance));
+      navStepIndex = 0;
+      navActive = true;
+
+      // Show map with real route geometry
+      showRouteMap(lat, lng, dest.lat, dest.lng, address, route.geometry.coordinates, distKm, mins);
+
+      // Speak first instruction
+      const intro = `Route found. ${distKm} kilometers, about ${mins} minutes. `;
+      const first = navSteps[0] || 'Head towards ' + address;
+      await speakAndWait(intro + first);
+
+      // Start GPS tracking to call out next steps
+      startNavTracking(dest.lat, dest.lng);
+
+    } catch(e) {
+      speak('Destination is ' + address + '. Tap Open Maps for directions.');
+    }
+
+  }, () => {
+    speak('Could not get your location. Tap Open Maps to navigate to ' + address);
+  }, {enableHighAccuracy:true, timeout:8000});
+}
+
+function cleanNavInstruction(maneuver, streetName, distance) {
+  const type = maneuver.type || '';
+  const modifier = maneuver.modifier || '';
+  const street = streetName && streetName !== '' ? ' onto ' + streetName : '';
+  const dist = distance > 50 ? ' in ' + (distance < 1000 ? Math.round(distance) + ' meters' : (distance/1000).toFixed(1) + ' kilometers') : '';
+
+  if (type === 'depart') return 'Start driving' + street;
+  if (type === 'arrive') return 'You have arrived at your destination';
+  if (type === 'turn') {
+    if (modifier === 'left') return 'Turn left' + street + dist;
+    if (modifier === 'right') return 'Turn right' + street + dist;
+    if (modifier === 'slight left') return 'Slight left' + street + dist;
+    if (modifier === 'slight right') return 'Slight right' + street + dist;
+    if (modifier === 'sharp left') return 'Sharp left turn' + street + dist;
+    if (modifier === 'sharp right') return 'Sharp right turn' + street + dist;
+    if (modifier === 'uturn') return 'Make a U turn' + dist;
+    return 'Turn ' + modifier + street + dist;
+  }
+  if (type === 'roundabout' || type === 'rotary') return 'Enter the roundabout and take exit ' + (maneuver.exit||'') + street;
+  if (type === 'merge') return 'Merge' + street;
+  if (type === 'fork') return modifier.includes('left') ? 'Keep left' + street : 'Keep right' + street;
+  if (type === 'end of road') return modifier.includes('left') ? 'Turn left at end of road' + street : 'Turn right at end of road' + street;
+  if (type === 'continue' || type === 'new name') return 'Continue straight' + street + dist;
+  return 'Continue' + dist;
+}
+
+function startNavTracking(destLat, destLng) {
+  if (navWatchId) navigator.geolocation.clearWatch(navWatchId);
+  navWatchId = navigator.geolocation.watchPosition(pos => {
+    if (!navActive) { navigator.geolocation.clearWatch(navWatchId); return; }
+    const dist = getDistance(pos.coords.latitude, pos.coords.longitude, destLat, destLng);
+    // Announce arrival
+    if (dist < 0.05) {
+      navActive = false;
+      navigator.geolocation.clearWatch(navWatchId);
+      speakAndWait('You have arrived at your destination. Good job!');
+    }
+  }, null, {enableHighAccuracy:true});
+}
+
+function getDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2-lat1) * Math.PI/180;
+  const dLng = (lng2-lng1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function showNavCard(address) {
+  const anchor = document.getElementById('scrollEnd');
+  const div = document.createElement('div'); div.className = 'msg ai';
+  div.innerHTML = '<div class="msg-label">Senior Driver AI — Navigation</div>';
+  const bubble = document.createElement('div'); bubble.className = 'bubble';
+  const card = document.createElement('div');
+  card.style.cssText = 'margin-top:8px;background:rgba(33,150,243,0.1);border:1px solid rgba(33,150,243,0.3);border-radius:14px;padding:14px;';
+  const enc = encodeURIComponent(address);
+  card.innerHTML = `
+    <div style="font-size:10px;color:var(--blue);text-transform:uppercase;letter-spacing:1px;margin-bottom:5px">Destination</div>
+    <div style="font-size:13px;color:var(--text);margin-bottom:12px;line-height:1.5">${address}</div>
+    <div style="display:flex;gap:8px;">
+      <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${enc}&travelmode=driving','_blank')"
+        style="flex:1;background:var(--blue);border:none;border-radius:10px;padding:11px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif;letter-spacing:1px;">
+        GOOGLE MAPS
+      </button>
+      <button onclick="window.open('https://waze.com/ul?q=${enc}&navigate=yes','_blank')"
+        style="flex:1;background:#07A3E0;border:none;border-radius:10px;padding:11px;color:white;font-size:13px;font-weight:700;cursor:pointer;font-family:Rajdhani,sans-serif;letter-spacing:1px;">
+        WAZE
+      </button>
+    </div>`;
+  bubble.appendChild(card);
+  div.appendChild(bubble);
+  anchor.parentNode.insertBefore(div, anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
+}
+
+function showRouteMap(lat, lng, dLat, dLng, dName, geometry, distKm, mins) {
+  const anchor = document.getElementById('scrollEnd');
+  const mapId = 'map-' + (++mapCounter);
+  const div = document.createElement('div'); div.className = 'msg ai';
+  div.innerHTML = '<div class="msg-label">Senior Driver AI — Route</div>';
+  const bubble = document.createElement('div'); bubble.className = 'bubble';
+
+  // Steps list
+  const stepsDiv = document.createElement('div');
+  stepsDiv.style.cssText = 'margin-bottom:10px;';
+  stepsDiv.innerHTML = `<div style="font-size:11px;color:var(--muted);margin-bottom:6px">TURN-BY-TURN — ${distKm}km, ~${mins} min</div>` +
+    navSteps.slice(0,6).map((s,i) => `<div style="font-size:12px;padding:5px 0;border-bottom:1px solid var(--border);color:${i===0?'var(--text)':'var(--muted)'}">${i===0?'➤':''} ${s}</div>`).join('') +
+    (navSteps.length > 6 ? `<div style="font-size:11px;color:var(--muted);padding-top:4px">+${navSteps.length-6} more steps</div>` : '');
+
+  // Next step button
+  const nextBtn = document.createElement('button');
+  nextBtn.style.cssText = 'width:100%;background:rgba(0,200,83,0.15);border:1px solid rgba(0,200,83,0.3);border-radius:10px;padding:10px;color:var(--green);font-size:13px;font-weight:600;cursor:pointer;margin-bottom:10px;font-family:Rajdhani,sans-serif;letter-spacing:1px;';
+  nextBtn.textContent = '🔊 REPEAT DIRECTION';
+  nextBtn.onclick = () => {
+    if (navSteps[navStepIndex]) speak(navSteps[navStepIndex]);
+    else speak('You have arrived at your destination.');
+  };
+
+  const card = document.createElement('div'); card.className = 'map-card';
+  const hdr = document.createElement('div'); hdr.className = 'map-hdr';
+  hdr.innerHTML = `<div class="map-title">Route: ${distKm}km · ${mins} min</div>`;
+  const openBtn = document.createElement('button'); openBtn.className = 'map-open-btn';
+  openBtn.textContent = 'Open Maps';
+  openBtn.onclick = () => window.open(`https://www.google.com/maps/dir/${lat},${lng}/${dLat},${dLng}`, '_blank');
+  hdr.appendChild(openBtn);
+  const mapDiv = document.createElement('div'); mapDiv.className = 'map-container'; mapDiv.id = mapId;
+  card.appendChild(hdr); card.appendChild(mapDiv);
+
+  bubble.appendChild(stepsDiv);
+  bubble.appendChild(nextBtn);
+  bubble.appendChild(card);
+  div.appendChild(bubble);
+  anchor.parentNode.insertBefore(div, anchor);
+  anchor.scrollIntoView({behavior:'smooth'});
+
+  setTimeout(() => {
+    const map = L.map(mapId, {zoomControl:false, attributionControl:false}).setView([lat,lng], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19}).addTo(map);
+    // Draw actual road route
+    const coords = geometry.map(c => [c[1], c[0]]);
+    const routeLine = L.polyline(coords, {color:'#2196F3', weight:5, opacity:0.9}).addTo(map);
+    // You marker
+    const youIcon = L.divIcon({html:'<div style="width:14px;height:14px;background:#2196F3;border:3px solid white;border-radius:50%;box-shadow:0 0 0 5px rgba(33,150,243,0.3)"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''});
+    L.marker([lat,lng], {icon:youIcon}).addTo(map);
+    // Dest marker
+    const dstIcon = L.divIcon({html:'<div style="width:18px;height:18px;background:#D0021B;border:3px solid white;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,0.5)"></div>',iconSize:[18,18],iconAnchor:[9,9],className:''});
+    L.marker([dLat,dLng], {icon:dstIcon}).addTo(map).bindPopup(dName);
+    map.fitBounds(routeLine.getBounds(), {padding:[20,20]});
+  }, 200);
 }
 
 // ─── TTS — Edge Neural via backend, fallback to browser ──
@@ -540,9 +755,8 @@ async function hfRespond(text) {
     detectLang(reply);
     addAIMsg(reply);
 
-    if (data.dest_address && currentLat && currentLng) {
-      const c = await geocodeAddress(data.dest_address);
-      if (c) showMap(currentLat,currentLng,c.lat,c.lng,data.dest_address);
+    if (data.dest_address) {
+      openGoogleMaps(data.dest_address);
     } else if (data.show_my_location && currentLat && currentLng) {
       showMap(currentLat,currentLng,null,null,null);
     }
@@ -652,13 +866,13 @@ async function sendText() {
     history.push({role:'assistant', content:reply});
     detectLang(reply);
     addAIMsg(reply);
-    speak(reply); // non-blocking for manual mode
+    speak(reply);
 
-    if (data.dest_address && currentLat && currentLng) {
-      const c = await geocodeAddress(data.dest_address);
-      if (c) showMap(currentLat,currentLng,c.lat,c.lng,data.dest_address);
+    if (data.dest_address) {
+      // Open Google Maps directly — no GPS needed, Google Maps finds driver location itself
+      openGoogleMaps(data.dest_address);
     } else if (data.show_my_location && currentLat && currentLng) {
-      showMap(currentLat,currentLng,null,null,null);
+      showMap(currentLat, currentLng, null, null, null);
     }
   } catch(err) {
     removeTyping(); addAIMsg('Cannot reach server. Check your connection.');
@@ -676,20 +890,24 @@ function detectLang(text) {
 function autoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,100)+'px'; }
 function triggerCamera() { document.getElementById('fileInput').click(); }
 function handleFile(e) {
-  const file=e.target.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=ev=>{
-    pendingImageB64=ev.target.result.split(',')[1]; pendingImageType=file.type||'image/jpeg';
-    document.getElementById('previewThumb').src=ev.target.result;
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    pendingImageB64 = ev.target.result.split(',')[1];
+    pendingImageType = file.type || 'image/jpeg';
+    document.getElementById('previewThumb').src = ev.target.result;
     document.getElementById('imgPreview').classList.add('on');
-    document.getElementById('camBtn').classList.add('has-img');
+    document.getElementById('scanBtn').classList.add('has-img');
+    // Auto-send with address scan prompt
+    document.getElementById('textInput').value = 'Scan this address label and tell me how to navigate there. Give me the shortest route guidance.';
+    sendText();
   };
-  reader.readAsDataURL(file); e.target.value='';
+  reader.readAsDataURL(file); e.target.value = '';
 }
 function clearImg() {
-  pendingImageB64=null; pendingImageType=null;
+  pendingImageB64 = null; pendingImageType = null;
   document.getElementById('imgPreview').classList.remove('on');
-  document.getElementById('camBtn').classList.remove('has-img');
+  document.getElementById('scanBtn').classList.remove('has-img');
 }
 
 function addUserMsg(text, imgSrc) {
