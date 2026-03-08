@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════
-//  NINJA CO-PILOT — Full demo version
+//  NINJA CO-PILOT — Full JS
+//  EN / 中文
 //  Safari/desktop: SpeechRecognition
 //  Chrome iOS: MediaRecorder → backend transcribe
-//  In-app live navigation
 //  Scan label → extract phone
-//  Weather rain check → popup delay notice
-//  SMS / WhatsApp send helper
+//  In-app live navigation
+//  ETA notify + rain delay popup
 // ═══════════════════════════════════════════════════════════
 
 (function () {
     "use strict";
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
-    var ETA_NOTIFY_SECONDS = 300; // 5 minutes
+    var ETA_NOTIFY_SECONDS = 300; // 5 min
     var ETA_NOTIFY_METERS = 1200; // fallback
     var DEFAULT_CUSTOMER_PHONE = "88918958";
 
@@ -35,14 +35,14 @@
     var ttsTimer = null;
     var speechUnlocked = false;
 
-    // live nav state
+    // route / nav state
     var activeRoute = null;
     var activeStepIndex = 0;
     var lastSpokenStep = -1;
     var navActive = false;
     var lastGpsCheckAt = 0;
 
-    // customer / delay notify state
+    // customer / notify state
     var customerPhone = DEFAULT_CUSTOMER_PHONE;
     var notifyShownForRoute = false;
     var arrivalPromptSpoken = false;
@@ -117,13 +117,13 @@
     ];
 
     // ═══════════════════════════════════════════════════════
-    //  PHONE / DELAY MESSAGE
+    //  PHONE / MESSAGES
     // ═══════════════════════════════════════════════════════
     function sanitizePhone(raw) {
         var s = String(raw || "").replace(/[^\d+]/g, "");
         if (!s) return "";
         if (s.indexOf("+") === 0) return s;
-        if (s.length === 8) return "65" + s; // SG default
+        if (s.length === 8) return "65" + s;
         return s;
     }
 
@@ -171,24 +171,20 @@
         window.open("https://wa.me/" + p + "?text=" + text, "_blank");
     }
 
-    function removeArrivalCard() {
-        removeEl("arrivalNotifyCard");
-    }
-
-    function removeRainCard() {
-        removeEl("rainDelayCard");
-    }
+    // ═══════════════════════════════════════════════════════
+    //  POPUPS
+    // ═══════════════════════════════════════════════════════
+    function removeArrivalCard() { removeEl("arrivalNotifyCard"); }
+    function removeRainCard() { removeEl("rainDelayCard"); }
 
     function showArrivalNotifyCard() {
         removeArrivalCard();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
         var msg = getArrivalMessage();
-
         var title = isChineseMode()
             ? "📩 快到了，要通知客户吗？"
             : "📩 Near destination. Notify customer?";
-
         var etaText = isChineseMode()
             ? "预计大约 " + mins + " 分钟内到"
             : "Estimated arrival in about " + mins + " minutes";
@@ -229,7 +225,6 @@
         var title = isChineseMode()
             ? "☔ 目的地附近下雨，要通知客户延迟吗？"
             : "☔ Rain near destination. Send delay notice to customer?";
-
         var detail = isChineseMode()
             ? "检测到目的地天气：" + (weatherInfo && weatherInfo.description ? weatherInfo.description : "下雨")
             : "Detected destination weather: " + (weatherInfo && weatherInfo.description ? weatherInfo.description : "rain");
@@ -699,7 +694,7 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    //  ROUTE + WEATHER + LIVE NAV
+    //  ROUTE / NAV
     // ═══════════════════════════════════════════════════════
     function fetchRoute(destAddr, cb) {
         if (!gpsPos) {
