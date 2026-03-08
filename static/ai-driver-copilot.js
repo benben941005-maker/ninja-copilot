@@ -1,40 +1,54 @@
 // ═══════════════════════════════════════════════════════════
 //  NINJA CO-PILOT — Multilanguage + Rain Alert + ETA Notify
-//  Safari/desktop: SpeechRecognition
-//  Chrome iOS: MediaRecorder → backend transcribe
-//  Scan label → extract phone
-//  In-app live navigation
-//  ETA notify + rain delay popup
-//  SMS / WhatsApp customer messages ALWAYS in English
+//  Fixed language alignment:
+//  - Cantonese stays Cantonese
+//  - Traditional Chinese stays Traditional Chinese
+//  - Simplified Chinese stays Simplified Chinese
+//  - TTS follows selected language as source of truth
+//  - If no Cantonese voice exists on device, do text-only fallback
 // ═══════════════════════════════════════════════════════════
 
 (function () {
     "use strict";
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
-    var ETA_NOTIFY_SECONDS = 300; // 5 min
-    var ETA_NOTIFY_METERS = 1200; // fallback
+    var ETA_NOTIFY_SECONDS = 300;
+    var ETA_NOTIFY_METERS = 1200;
     var DEFAULT_CUSTOMER_PHONE = "88918958";
 
-    // ─── Platform detection ───
     var ua = navigator.userAgent.toLowerCase();
     var isIOS = /iphone|ipad|ipod/.test(ua);
     var hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     var useRecorder = !hasSR;
 
     var LANGUAGES = [
-        { label: "EN",     flag: "🇬🇧", code: "en-SG",      ai: "English" },
-        { label: "中文",    flag: "🇨🇳", code: "zh-CN",      ai: "Chinese Simplified" },
-        { label: "繁體",    flag: "🇹🇼", code: "zh-TW",      ai: "Chinese Traditional" },
-        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK",      ai: "Cantonese" },
-        { label: "Malay",  flag: "🇲🇾", code: "ms-MY",      ai: "Malay" },
-        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN",      ai: "Tamil" },
-        { label: "ไทย",    flag: "🇹🇭", code: "th-TH",      ai: "Thai" },
-        { label: "Việt",   flag: "🇻🇳", code: "vi-VN",      ai: "Vietnamese" },
-        { label: "Indo",   flag: "🇮🇩", code: "id-ID",      ai: "Bahasa Indonesia" },
-        { label: "한국어",   flag: "🇰🇷", code: "ko-KR",      ai: "Korean" },
-        { label: "日本語",   flag: "🇯🇵", code: "ja-JP",      ai: "Japanese" }
+        { label: "EN",     flag: "🇬🇧", code: "en-SG", ai: "English" },
+        { label: "中文",    flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
+        { label: "繁體",    flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
+        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
+        { label: "Malay",  flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
+        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
+        { label: "ไทย",    flag: "🇹🇭", code: "th-TH", ai: "Thai" },
+        { label: "Việt",   flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
+        { label: "Indo",   flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
+        { label: "한국어",   flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
+        { label: "日本語",   flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
     ];
+
+    var LANG_TTS = {
+        "zh-CN": ["zh-CN", "cmn-CN", "zh"],
+        "zh-TW": ["zh-TW", "cmn-TW", "zh-Hant", "zh"],
+        "zh-HK": ["zh-HK", "yue-HK", "zh-yue", "yue", "zh-Hant-HK"],
+        "ms": ["ms-MY", "ms"],
+        "ta": ["ta-IN", "ta"],
+        "id": ["id-ID", "id"],
+        "th": ["th-TH", "th"],
+        "vi": ["vi-VN", "vi"],
+        "fil": ["fil-PH", "tl-PH", "fil"],
+        "ko": ["ko-KR", "ko"],
+        "ja": ["ja-JP", "ja"],
+        "en": ["en-SG", "en-US", "en-GB", "en"]
+    };
 
     var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
     var isListening = false, recognition = null, gpsPos = null, selectedLang = 0;
@@ -44,21 +58,21 @@
     var ttsTimer = null;
     var speechUnlocked = false;
 
-    // route / nav state
     var activeRoute = null;
     var activeStepIndex = 0;
     var lastSpokenStep = -1;
     var navActive = false;
     var lastGpsCheckAt = 0;
 
-    // customer / notify state
     var customerPhone = DEFAULT_CUSTOMER_PHONE;
     var notifyShownForRoute = false;
     var arrivalPromptSpoken = false;
     var rainAlertShownForRoute = false;
     var currentWeatherInfo = null;
 
-    // DOM
+    // keep reply language pinned to selected language
+    var lastDetectedLang = "en-SG";
+
     var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
     var sendBtn = document.getElementById("sendBtn"), voiceBtn = document.getElementById("voiceBtn");
     var scanBtn = document.getElementById("scanBtn"), photoBtn = document.getElementById("photoBtn");
@@ -73,13 +87,39 @@
         return LANGUAGES[selectedLang];
     }
 
+    function syncReplyLanguageToSelection() {
+        lastDetectedLang = currentLang().code;
+    }
+
     function isCantoneseMode() {
-        return currentLang().ai === "Cantonese";
+        return currentLang().code === "zh-HK";
+    }
+
+    function isTraditionalChineseMode() {
+        return currentLang().code === "zh-TW";
+    }
+
+    function isSimplifiedChineseMode() {
+        return currentLang().code === "zh-CN";
     }
 
     function isChineseLikeMode() {
-        var ai = currentLang().ai;
-        return ai === "Chinese Simplified" || ai === "Chinese Traditional" || ai === "Cantonese";
+        return isCantoneseMode() || isTraditionalChineseMode() || isSimplifiedChineseMode();
+    }
+
+    function getPreferredReplyLanguage() {
+        var code = currentLang().code;
+        if (code === "zh-HK") return "Cantonese";
+        if (code === "zh-TW") return "Traditional Chinese";
+        if (code === "zh-CN") return "Simplified Chinese";
+        if (code === "ms-MY") return "Malay";
+        if (code === "ta-IN") return "Tamil";
+        if (code === "th-TH") return "Thai";
+        if (code === "vi-VN") return "Vietnamese";
+        if (code === "id-ID") return "Bahasa Indonesia";
+        if (code === "ko-KR") return "Korean";
+        if (code === "ja-JP") return "Japanese";
+        return "English";
     }
 
     function getSysPrompt() {
@@ -91,18 +131,37 @@
         if (isCantoneseMode()) {
             replyRule = [
                 "IMPORTANT: Reply ONLY in Cantonese.",
-                "Use Hong Kong Cantonese grammar and wording.",
+                "Use Hong Kong Cantonese wording and grammar.",
                 "Use Traditional Chinese characters.",
-                "Never reply in Mandarin.",
-                "Never reply in standard written Chinese."
+                "Do NOT reply in Mandarin.",
+                "Do NOT reply in simplified Chinese.",
+                "Do NOT translate into standard written Chinese.",
+                "Sound like a real Cantonese-speaking coworker."
+            ].join(" ");
+        } else if (isTraditionalChineseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Traditional Chinese.",
+                "Use Traditional Chinese characters only.",
+                "Do NOT reply in Simplified Chinese.",
+                "Do NOT reply in Cantonese unless the driver switches to Cantonese.",
+                "Use natural Taiwanese/Hong Kong readable Traditional Chinese."
+            ].join(" ");
+        } else if (isSimplifiedChineseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Simplified Chinese.",
+                "Use Simplified Chinese characters only.",
+                "Do NOT reply in Traditional Chinese.",
+                "Do NOT reply in Cantonese unless the driver switches language."
             ].join(" ");
         } else {
-            replyRule = "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+            replyRule = "IMPORTANT: Reply ONLY in " + getPreferredReplyLanguage() + ". Use natural local wording. Do not switch language.";
         }
 
         return [
             "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
             replyRule,
+            "If the driver speaks in a specific language variant, reply in exactly that same language variant.",
+            "Never switch to another Chinese variant unless the user switches first.",
             "RULES: Under 60 words. Professional. Action first.",
             "",
             "NAVIGATION REQUESTS:",
@@ -139,9 +198,6 @@
         "Set customer phone 88918958"
     ];
 
-    // ═══════════════════════════════════════════════════════
-    //  UI TEXT
-    // ═══════════════════════════════════════════════════════
     function uiText(key) {
         var ai = currentLang().ai;
 
@@ -152,13 +208,13 @@
             scan_label: "扫描包裹标签来读取电话号码",
             ask_route: "输入目的地或说出附近地点",
             rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
-            route_starting: "🗺 现在开始导航...",
+            route_starting: "现在开始导航...",
             route_not_found: "找不到路线。",
-            notify_arrival: "📩 快到了，要通知客户吗？",
+            notify_arrival: "快到了，要通知客户吗？",
             eta_about: "预计大约 ",
             eta_minutes: " 分钟内到",
             close: "关闭",
-            rain_near_dest: "☔ 目的地附近下雨，要通知客户延迟吗？",
+            rain_near_dest: "目的地附近下雨，要通知客户延迟吗？",
             detected_weather: "检测到目的地天气：",
             about_5_min: "还有大约五分钟到，要通知客户吗？",
             raining_prompt: "目的地附近正在下雨，要通知客户可能会稍微延迟吗？",
@@ -178,13 +234,13 @@
             scan_label: "掃描包裹標籤讀取電話號碼",
             ask_route: "輸入目的地或者講附近地點",
             rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
-            route_starting: "🗺 而家開始導航...",
+            route_starting: "而家開始導航...",
             route_not_found: "搵唔到路線。",
-            notify_arrival: "📩 就快到，要通知客戶嗎？",
+            notify_arrival: "就快到，要通知客戶嗎？",
             eta_about: "預計大約 ",
             eta_minutes: " 分鐘內到",
             close: "關閉",
-            rain_near_dest: "☔ 目的地附近落雨，要通知客戶延遲嗎？",
+            rain_near_dest: "目的地附近落雨，要通知客戶延遲嗎？",
             detected_weather: "檢測到目的地天氣：",
             about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
             raining_prompt: "目的地附近正喺落雨，要通知客戶可能會遲少少嗎？",
@@ -204,13 +260,13 @@
             scan_label: "Scan parcel label to capture phone",
             ask_route: "Ask for a route",
             rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
-            route_starting: "🗺 Getting directions...",
+            route_starting: "Getting directions...",
             route_not_found: "Route not found.",
-            notify_arrival: "📩 Near destination. Notify customer?",
+            notify_arrival: "Near destination. Notify customer?",
             eta_about: "Estimated arrival in about ",
             eta_minutes: " minutes",
             close: "Close",
-            rain_near_dest: "☔ Rain near destination. Send delay notice to customer?",
+            rain_near_dest: "Rain near destination. Send delay notice to customer?",
             detected_weather: "Detected destination weather: ",
             about_5_min: "About 5 minutes to arrival. Notify customer?",
             raining_prompt: "It is raining near the destination. Send a delay notice to the customer?",
@@ -231,9 +287,6 @@
         return map[key] || en[key] || key;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  CANTONESE SHAPING
-    // ═══════════════════════════════════════════════════════
     function normalizeCantoneseText(text) {
         var t = String(text || "").trim();
         if (!t) return t;
@@ -285,9 +338,6 @@
         return t;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  PHONE / MESSAGES
-    // ═══════════════════════════════════════════════════════
     function sanitizePhone(raw) {
         var s = String(raw || "").replace(/[^\d+]/g, "");
         if (!s) return "";
@@ -311,12 +361,10 @@
         return customerPhone.replace(/^\+/, "");
     }
 
-    // ALWAYS ENGLISH
     function getArrivalMessage() {
         return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
     }
 
-    // ALWAYS ENGLISH
     function getRainDelayMessage() {
         return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
     }
@@ -324,9 +372,7 @@
     function openSms(phone, message) {
         var p = String(phone || "");
         var body = encodeURIComponent(message || "");
-        var url = isIOS
-            ? "sms:" + p + "&body=" + body
-            : "sms:" + p + "?body=" + body;
+        var url = isIOS ? "sms:" + p + "&body=" + body : "sms:" + p + "?body=" + body;
         window.location.href = url;
     }
 
@@ -336,9 +382,6 @@
         window.open("https://wa.me/" + p + "?text=" + text, "_blank");
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  POPUPS
-    // ═══════════════════════════════════════════════════════
     function removeArrivalCard() { removeEl("arrivalNotifyCard"); }
     function removeRainCard() { removeEl("rainDelayCard"); }
 
@@ -415,9 +458,6 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  TTS
-    // ═══════════════════════════════════════════════════════
     function unlockSpeech() {
         if (!window.speechSynthesis || speechUnlocked) return;
         try {
@@ -431,21 +471,126 @@
         } catch (e) {}
     }
 
-    function pickVoice(langCode) {
+    function pickVoiceByTargets(targets) {
         if (!window.speechSynthesis) return null;
         var voices = window.speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
 
         var exact = voices.find(function (v) {
-            return (v.lang || "").toLowerCase() === langCode.toLowerCase();
+            var lang = (v.lang || "").toLowerCase();
+            return targets.some(function (t) {
+                return lang === t.toLowerCase();
+            });
         });
         if (exact) return exact;
 
-        var shortCode = langCode.split("-")[0].toLowerCase();
         var partial = voices.find(function (v) {
-            return (v.lang || "").toLowerCase().indexOf(shortCode) === 0;
+            var lang = (v.lang || "").toLowerCase();
+            return targets.some(function (t) {
+                return lang.indexOf(t.toLowerCase()) === 0;
+            });
         });
-        return partial || null;
+        if (partial) return partial;
+
+        return null;
+    }
+
+    function pickCantoneseVoice() {
+        if (!window.speechSynthesis) return null;
+        var voices = window.speechSynthesis.getVoices() || [];
+        if (!voices.length) return null;
+
+        return voices.find(function (v) {
+            var s = ((v.name || "") + " " + (v.lang || "")).toLowerCase();
+            return /yue|cantonese|hong kong|zh-hk/.test(s);
+        }) || null;
+    }
+
+    function stripEmojis(t) {
+        return String(t || "")
+            .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+            .replace(/[\u{2600}-\u{27BF}]/gu, "")
+            .replace(/[\u{FE00}-\u{FEFF}]/gu, "")
+            .replace(/[\u{1F900}-\u{1FAFF}]/gu, "")
+            .replace(/[*_#\[\]]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function detectLang(text) {
+        var t = String(text || "");
+
+        if (currentLang().code === "zh-HK") {
+            lastDetectedLang = "zh-HK";
+            return;
+        }
+        if (currentLang().code === "zh-TW") {
+            lastDetectedLang = "zh-TW";
+            return;
+        }
+        if (currentLang().code === "zh-CN") {
+            lastDetectedLang = "zh-CN";
+            return;
+        }
+        if (currentLang().code === "ms-MY") {
+            lastDetectedLang = "ms";
+            return;
+        }
+        if (currentLang().code === "ta-IN") {
+            lastDetectedLang = "ta";
+            return;
+        }
+        if (currentLang().code === "th-TH") {
+            lastDetectedLang = "th";
+            return;
+        }
+        if (currentLang().code === "vi-VN") {
+            lastDetectedLang = "vi";
+            return;
+        }
+        if (currentLang().code === "id-ID") {
+            lastDetectedLang = "id";
+            return;
+        }
+        if (currentLang().code === "ko-KR") {
+            lastDetectedLang = "ko";
+            return;
+        }
+        if (currentLang().code === "ja-JP") {
+            lastDetectedLang = "ja";
+            return;
+        }
+
+        if (/[\u0e00-\u0e7f]/.test(t)) { lastDetectedLang = "th"; return; }
+        if (/[\uac00-\ud7af]/.test(t)) { lastDetectedLang = "ko"; return; }
+        if (/[\u3040-\u30ff]/.test(t)) { lastDetectedLang = "ja"; return; }
+
+        if (/[佢哋佢而家咗喺咩唔冇啦啲咁樣嗰呢度邊度搵返嚟]/.test(t)) {
+            lastDetectedLang = "zh-HK";
+            return;
+        }
+
+        if (/[這個那個現在時間還有讓會話點樣處理聯絡顯示導航這裡附近樓層單位]/.test(t)) {
+            lastDetectedLang = "zh-TW";
+            return;
+        }
+
+        if (/[这个那个现在时间还有让会话怎么处理联系显示导航这里附近楼层单位]/.test(t)) {
+            lastDetectedLang = "zh-CN";
+            return;
+        }
+
+        if (/[\u4e00-\u9fff]/.test(t)) {
+            lastDetectedLang = "zh-CN";
+            return;
+        }
+
+        if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(t)) { lastDetectedLang = "ms"; return; }
+        if (/\b(kamu|tidak|bisa|dengan|untuk|ya)\b/i.test(t)) { lastDetectedLang = "id"; return; }
+        if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(t)) { lastDetectedLang = "fil"; return; }
+        if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(t)) { lastDetectedLang = "vi"; return; }
+
+        lastDetectedLang = "en";
     }
 
     function speak(text, onDone) {
@@ -458,20 +603,45 @@
             window.speechSynthesis.cancel();
             clearInterval(ttsTimer);
 
-            var cleanText = String(text).trim();
+            var cleanText = stripEmojis(tuneReplyByLanguage(text));
             if (!cleanText) {
                 if (onDone) onDone();
                 return;
             }
 
+            var langKey = lastDetectedLang || currentLang().code || "en";
+            var targets = LANG_TTS[langKey] || LANG_TTS.en;
+            var chosenVoice = null;
+
+            if (langKey === "zh-HK") {
+                chosenVoice = pickVoiceByTargets(targets) || pickCantoneseVoice();
+
+                // no Cantonese voice on device: better no speech than Mandarin speech
+                if (!chosenVoice) {
+                    console.log("No Cantonese TTS voice found on this device. Text-only fallback.");
+                    if (onDone) onDone();
+                    return;
+                }
+            } else {
+                chosenVoice = pickVoiceByTargets(targets);
+            }
+
+            if (!chosenVoice) {
+                var fallbackTargets = LANG_TTS.en;
+                chosenVoice = pickVoiceByTargets(fallbackTargets);
+            }
+
             var u = new SpeechSynthesisUtterance(cleanText);
-            u.lang = currentLang().code;
-            u.rate = isCantoneseMode() ? 0.88 : 0.92;
+            u.rate = isCantoneseMode() ? 0.90 : 0.95;
             u.pitch = 1;
             u.volume = 1;
 
-            var chosenVoice = pickVoice(u.lang);
-            if (chosenVoice) u.voice = chosenVoice;
+            if (chosenVoice) {
+                u.voice = chosenVoice;
+                u.lang = chosenVoice.lang || currentLang().code;
+            } else {
+                u.lang = currentLang().code;
+            }
 
             u.onstart = function () {
                 isSpeaking = true;
@@ -522,9 +692,6 @@
         };
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  LANGUAGE PICKER
-    // ═══════════════════════════════════════════════════════
     function renderLangBar() {
         langBar.innerHTML = "";
         LANGUAGES.forEach(function (lang, i) {
@@ -534,6 +701,7 @@
             btn.addEventListener("click", function () {
                 unlockSpeech();
                 selectedLang = i;
+                syncReplyLanguageToSelection();
                 renderLangBar();
                 micLabel.textContent = "MIC • " + lang.flag + " " + lang.ai;
                 addBubble("assistant", "🌐 " + lang.flag + " " + lang.ai);
@@ -542,9 +710,6 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  IMAGE COMPRESSION
-    // ═══════════════════════════════════════════════════════
     function compressImage(file, cb) {
         var reader = new FileReader();
         reader.onload = function (e) {
@@ -583,9 +748,6 @@
         reader.readAsDataURL(file);
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  API
-    // ═══════════════════════════════════════════════════════
     function apiChat(text, cb) {
         fetch("/api/chat", {
             method: "POST",
@@ -636,9 +798,6 @@
             .catch(function (e) { cb(e.message); });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  MIC
-    // ═══════════════════════════════════════════════════════
     function toggleMic() {
         unlockSpeech();
 
@@ -648,6 +807,8 @@
         }
 
         micActive = true;
+        syncReplyLanguageToSelection();
+
         voiceBtn.classList.add("active");
         voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
         micBar.classList.add("on");
@@ -812,9 +973,6 @@
         }, 500);
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  GPS
-    // ═══════════════════════════════════════════════════════
     function initGPS() {
         if (!navigator.geolocation) {
             locAddr.textContent = "GPS not available";
@@ -850,9 +1008,6 @@
             .catch(function () {});
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  ROUTE / NAV
-    // ═══════════════════════════════════════════════════════
     function fetchRoute(destAddr, cb) {
         if (!gpsPos) {
             cb("No GPS");
@@ -925,9 +1080,7 @@
         activeRoute.steps.forEach(function (_, i) {
             var el = document.getElementById("rs" + i);
             if (el) {
-                el.style.background = i === activeStepIndex
-                    ? "rgba(227,24,55,0.18)"
-                    : "transparent";
+                el.style.background = i === activeStepIndex ? "rgba(227,24,55,0.18)" : "transparent";
             }
         });
 
@@ -944,6 +1097,7 @@
         if (!step || !step.text) return;
 
         lastSpokenStep = activeStepIndex;
+        detectLang(step.text);
         speak(tuneReplyByLanguage(step.text));
     }
 
@@ -958,6 +1112,7 @@
 
             if (!arrivalPromptSpoken) {
                 arrivalPromptSpoken = true;
+                detectLang(uiText("about_5_min"));
                 speak(uiText("about_5_min"));
             }
 
@@ -970,6 +1125,7 @@
         if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
 
         rainAlertShownForRoute = true;
+        detectLang(uiText("raining_prompt"));
         speak(uiText("raining_prompt"));
         showRainDelayCard(currentWeatherInfo);
     }
@@ -989,7 +1145,7 @@
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
             var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
-
+            detectLang(warnText);
             speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
@@ -1022,6 +1178,7 @@
                 }, 500);
             } else {
                 navActive = false;
+                detectLang(uiText("arrived"));
                 speak(uiText("arrived"));
             }
         }
@@ -1079,9 +1236,6 @@
         return "⬆️";
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  DELIVERY CARD
-    // ═══════════════════════════════════════════════════════
     function showDeliveryCard(parsed) {
         removeEl("deliveryCard");
 
@@ -1119,9 +1273,6 @@
         scrollDown();
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  HELPERS
-    // ═══════════════════════════════════════════════════════
     function esc(s) {
         var d = document.createElement("div");
         d.textContent = s;
@@ -1186,11 +1337,10 @@
         return null;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  SEND TEXT
-    // ═══════════════════════════════════════════════════════
     function sendText(text) {
         if (!text || !text.trim() || busy) return;
+
+        syncReplyLanguageToSelection();
 
         var rawText = text.trim();
 
@@ -1230,6 +1380,7 @@
             }
 
             reply = tuneReplyByLanguage(reply);
+            detectLang(reply);
             addBubble("assistant", reply);
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
@@ -1260,14 +1411,12 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  SCAN LABEL
-    // ═══════════════════════════════════════════════════════
     function handleScan(fileInput) {
         var file = fileInput.files && fileInput.files[0];
         if (!file || busy) return;
 
         busy = true;
+        syncReplyLanguageToSelection();
 
         compressImage(file, function (err, img) {
             if (err) {
@@ -1305,6 +1454,7 @@
 
                     var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
                     voice = tuneReplyByLanguage(voice);
+                    detectLang(voice);
 
                     setTimeout(function () {
                         speak(voice, function () {
@@ -1322,6 +1472,7 @@
                     }, 150);
                 } else {
                     reply = tuneReplyByLanguage(reply);
+                    detectLang(reply);
                     addBubble("assistant", reply);
                     setTimeout(function () {
                         speak(reply, restartMicAfterReply);
@@ -1331,10 +1482,8 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  INIT
-    // ═══════════════════════════════════════════════════════
     renderLangBar();
+    syncReplyLanguageToSelection();
 
     CHIPS.forEach(function (c) {
         var btn = document.createElement("button");
