@@ -1,20 +1,18 @@
 // ═══════════════════════════════════════════════════════════
-//  NINJA CO-PILOT — Multilanguage + Rain Alert + ETA Notify
-//  Fixed language alignment:
-//  - Cantonese stays Cantonese
-//  - Traditional Chinese stays Traditional Chinese
-//  - Simplified Chinese stays Simplified Chinese
-//  - TTS follows selected language as source of truth
-//  - If no Cantonese voice exists on device, do text-only fallback
+//  NINJA CO-PILOT
+//  - strict language alignment
+//  - scan / route / ETA notify
+//  - 5-minute arrival popup
+//  - customer message ALWAYS in English
 // ═══════════════════════════════════════════════════════════
 
 (function () {
     "use strict";
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
-    var ETA_NOTIFY_SECONDS = 300;
-    var ETA_NOTIFY_METERS = 1200;
-    var DEFAULT_CUSTOMER_PHONE = "88918958";
+    var ETA_NOTIFY_SECONDS = 300; // 5 min
+    var ETA_NOTIFY_METERS = 1200; // fallback
+    var DEFAULT_CUSTOMER_PHONE = "";
 
     var ua = navigator.userAgent.toLowerCase();
     var isIOS = /iphone|ipad|ipod/.test(ua);
@@ -70,7 +68,6 @@
     var rainAlertShownForRoute = false;
     var currentWeatherInfo = null;
 
-    // keep reply language pinned to selected language
     var lastDetectedLang = "en-SG";
 
     var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
@@ -103,10 +100,6 @@
         return currentLang().code === "zh-CN";
     }
 
-    function isChineseLikeMode() {
-        return isCantoneseMode() || isTraditionalChineseMode() || isSimplifiedChineseMode();
-    }
-
     function getPreferredReplyLanguage() {
         var code = currentLang().code;
         if (code === "zh-HK") return "Cantonese";
@@ -135,16 +128,14 @@
                 "Use Traditional Chinese characters.",
                 "Do NOT reply in Mandarin.",
                 "Do NOT reply in simplified Chinese.",
-                "Do NOT translate into standard written Chinese.",
-                "Sound like a real Cantonese-speaking coworker."
+                "Do NOT translate into standard written Chinese."
             ].join(" ");
         } else if (isTraditionalChineseMode()) {
             replyRule = [
                 "IMPORTANT: Reply ONLY in Traditional Chinese.",
                 "Use Traditional Chinese characters only.",
                 "Do NOT reply in Simplified Chinese.",
-                "Do NOT reply in Cantonese unless the driver switches to Cantonese.",
-                "Use natural Taiwanese/Hong Kong readable Traditional Chinese."
+                "Do NOT reply in Cantonese unless the driver switches to Cantonese."
             ].join(" ");
         } else if (isSimplifiedChineseMode()) {
             replyRule = [
@@ -165,14 +156,16 @@
             "RULES: Under 60 words. Professional. Action first.",
             "",
             "NAVIGATION REQUESTS:",
-            "When driver asks to go to ANY place (restaurant, petrol station, toilet, shop, etc.):",
+            "When driver asks to go to ANY place (restaurant, petrol station, toilet, shop, block, building, etc.):",
             "- Find the nearest one based on driver's current location",
             "- You MUST include this exact line in your reply:",
-            "  ADDRESS: [full address with street and postal code]",
+            "  ADDRESS: [full Singapore address with street name and postal code]",
+            "- Never return only a block number",
+            "- Never return only a place name",
             "- Without the ADDRESS: line, navigation cannot start",
             "",
             "PARTIAL ADDRESSES:",
-            "If driver says just a block number like 'block 214' or 'blk 214', use current location to form full address."
+            "If driver says only a block number like '214', 'block 214', or 'blk 214', combine it with the current location and return the nearest likely full Singapore address with postal code."
         ].join("\n");
     }
 
@@ -194,8 +187,7 @@
         "Traffic jam",
         "Damaged parcel",
         "Nearest petrol station",
-        "Nearest toilet",
-        "Set customer phone 88918958"
+        "Nearest toilet"
     ];
 
     function uiText(key) {
@@ -361,10 +353,12 @@
         return customerPhone.replace(/^\+/, "");
     }
 
+    // ALWAYS ENGLISH
     function getArrivalMessage() {
         return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
     }
 
+    // ALWAYS ENGLISH
     function getRainDelayMessage() {
         return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
     }
@@ -389,9 +383,10 @@
         removeArrivalCard();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
-        var msg = getArrivalMessage();
+        var msg = getArrivalMessage(); // English only
         var title = uiText("notify_arrival");
         var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
+        var hasPhone = !!customerPhone;
 
         var div = document.createElement("div");
         div.id = "arrivalNotifyCard";
@@ -399,11 +394,12 @@
             '<div style="background:rgba(227,24,55,0.10);border:1px solid rgba(227,24,55,0.28);border-radius:14px;padding:12px;margin:8px 0;">' +
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(etaText) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
+                '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
-                    '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
-                    '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    (hasPhone ? '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
+                    (hasPhone ? '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
                     '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
@@ -411,12 +407,15 @@
         chatEl.appendChild(div);
         scrollDown();
 
-        document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
-            openSms(getCustomerPhoneForSms(), msg);
-        });
-        document.getElementById("arrivalWaBtn").addEventListener("click", function () {
-            openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
-        });
+        if (hasPhone) {
+            document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
+                openSms(getCustomerPhoneForSms(), msg);
+            });
+            document.getElementById("arrivalWaBtn").addEventListener("click", function () {
+                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+            });
+        }
+
         document.getElementById("arrivalCloseBtn").addEventListener("click", function () {
             removeArrivalCard();
         });
@@ -425,9 +424,10 @@
     function showRainDelayCard(weatherInfo) {
         removeRainCard();
 
-        var msg = getRainDelayMessage();
+        var msg = getRainDelayMessage(); // English only
         var title = uiText("rain_near_dest");
         var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
+        var hasPhone = !!customerPhone;
 
         var div = document.createElement("div");
         div.id = "rainDelayCard";
@@ -435,11 +435,12 @@
             '<div style="background:rgba(30,144,255,0.10);border:1px solid rgba(30,144,255,0.30);border-radius:14px;padding:12px;margin:8px 0;">' +
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(detail) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
+                '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
-                    '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
-                    '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    (hasPhone ? '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
+                    (hasPhone ? '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
                     '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
@@ -447,12 +448,15 @@
         chatEl.appendChild(div);
         scrollDown();
 
-        document.getElementById("rainSmsBtn").addEventListener("click", function () {
-            openSms(getCustomerPhoneForSms(), msg);
-        });
-        document.getElementById("rainWaBtn").addEventListener("click", function () {
-            openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
-        });
+        if (hasPhone) {
+            document.getElementById("rainSmsBtn").addEventListener("click", function () {
+                openSms(getCustomerPhoneForSms(), msg);
+            });
+            document.getElementById("rainWaBtn").addEventListener("click", function () {
+                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+            });
+        }
+
         document.getElementById("rainCloseBtn").addEventListener("click", function () {
             removeRainCard();
         });
@@ -520,71 +524,24 @@
     function detectLang(text) {
         var t = String(text || "");
 
-        if (currentLang().code === "zh-HK") {
-            lastDetectedLang = "zh-HK";
-            return;
-        }
-        if (currentLang().code === "zh-TW") {
-            lastDetectedLang = "zh-TW";
-            return;
-        }
-        if (currentLang().code === "zh-CN") {
-            lastDetectedLang = "zh-CN";
-            return;
-        }
-        if (currentLang().code === "ms-MY") {
-            lastDetectedLang = "ms";
-            return;
-        }
-        if (currentLang().code === "ta-IN") {
-            lastDetectedLang = "ta";
-            return;
-        }
-        if (currentLang().code === "th-TH") {
-            lastDetectedLang = "th";
-            return;
-        }
-        if (currentLang().code === "vi-VN") {
-            lastDetectedLang = "vi";
-            return;
-        }
-        if (currentLang().code === "id-ID") {
-            lastDetectedLang = "id";
-            return;
-        }
-        if (currentLang().code === "ko-KR") {
-            lastDetectedLang = "ko";
-            return;
-        }
-        if (currentLang().code === "ja-JP") {
-            lastDetectedLang = "ja";
-            return;
-        }
+        if (currentLang().code === "zh-HK") { lastDetectedLang = "zh-HK"; return; }
+        if (currentLang().code === "zh-TW") { lastDetectedLang = "zh-TW"; return; }
+        if (currentLang().code === "zh-CN") { lastDetectedLang = "zh-CN"; return; }
+        if (currentLang().code === "ms-MY") { lastDetectedLang = "ms"; return; }
+        if (currentLang().code === "ta-IN") { lastDetectedLang = "ta"; return; }
+        if (currentLang().code === "th-TH") { lastDetectedLang = "th"; return; }
+        if (currentLang().code === "vi-VN") { lastDetectedLang = "vi"; return; }
+        if (currentLang().code === "id-ID") { lastDetectedLang = "id"; return; }
+        if (currentLang().code === "ko-KR") { lastDetectedLang = "ko"; return; }
+        if (currentLang().code === "ja-JP") { lastDetectedLang = "ja"; return; }
 
         if (/[\u0e00-\u0e7f]/.test(t)) { lastDetectedLang = "th"; return; }
         if (/[\uac00-\ud7af]/.test(t)) { lastDetectedLang = "ko"; return; }
         if (/[\u3040-\u30ff]/.test(t)) { lastDetectedLang = "ja"; return; }
-
-        if (/[佢哋佢而家咗喺咩唔冇啦啲咁樣嗰呢度邊度搵返嚟]/.test(t)) {
-            lastDetectedLang = "zh-HK";
-            return;
-        }
-
-        if (/[這個那個現在時間還有讓會話點樣處理聯絡顯示導航這裡附近樓層單位]/.test(t)) {
-            lastDetectedLang = "zh-TW";
-            return;
-        }
-
-        if (/[这个那个现在时间还有让会话怎么处理联系显示导航这里附近楼层单位]/.test(t)) {
-            lastDetectedLang = "zh-CN";
-            return;
-        }
-
-        if (/[\u4e00-\u9fff]/.test(t)) {
-            lastDetectedLang = "zh-CN";
-            return;
-        }
-
+        if (/[佢哋佢而家咗喺咩唔冇啦啲咁樣嗰呢度邊度搵返嚟]/.test(t)) { lastDetectedLang = "zh-HK"; return; }
+        if (/[這個那個現在時間還有讓會話點樣處理聯絡顯示導航這裡附近樓層單位]/.test(t)) { lastDetectedLang = "zh-TW"; return; }
+        if (/[这个那个现在时间还有让会话怎么处理联系显示导航这里附近楼层单位]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
+        if (/[\u4e00-\u9fff]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
         if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(t)) { lastDetectedLang = "ms"; return; }
         if (/\b(kamu|tidak|bisa|dengan|untuk|ya)\b/i.test(t)) { lastDetectedLang = "id"; return; }
         if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(t)) { lastDetectedLang = "fil"; return; }
@@ -615,10 +572,7 @@
 
             if (langKey === "zh-HK") {
                 chosenVoice = pickVoiceByTargets(targets) || pickCantoneseVoice();
-
-                // no Cantonese voice on device: better no speech than Mandarin speech
                 if (!chosenVoice) {
-                    console.log("No Cantonese TTS voice found on this device. Text-only fallback.");
                     if (onDone) onDone();
                     return;
                 }
@@ -627,8 +581,7 @@
             }
 
             if (!chosenVoice) {
-                var fallbackTargets = LANG_TTS.en;
-                chosenVoice = pickVoiceByTargets(fallbackTargets);
+                chosenVoice = pickVoiceByTargets(LANG_TTS.en);
             }
 
             var u = new SpeechSynthesisUtterance(cleanText);
