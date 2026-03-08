@@ -2,9 +2,10 @@
 //  NINJA CO-PILOT — Full demo version
 //  Safari/desktop: SpeechRecognition
 //  Chrome iOS: MediaRecorder → backend transcribe
-//  Cantonese strengthened
 //  In-app live navigation
-//  ETA <= 5 min customer notify popup (SMS / WhatsApp)
+//  Scan label → extract phone
+//  Weather rain check → popup delay notice
+//  SMS / WhatsApp send helper
 // ═══════════════════════════════════════════════════════════
 
 (function () {
@@ -12,7 +13,7 @@
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
     var ETA_NOTIFY_SECONDS = 300; // 5 minutes
-    var ETA_NOTIFY_METERS = 1200; // backup trigger
+    var ETA_NOTIFY_METERS = 1200; // fallback
     var DEFAULT_CUSTOMER_PHONE = "88918958";
 
     // ─── Platform detection ───
@@ -23,16 +24,7 @@
 
     var LANGUAGES = [
         { label: "EN", flag: "🇬🇧", code: "en-SG", ai: "English" },
-        { label: "中文", flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
-        { label: "繁體", flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
-        { label: "廣東話", flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
-        { label: "Malay", flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
-        { label: "Tamil", flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
-        { label: "ไทย", flag: "🇹🇭", code: "th-TH", ai: "Thai" },
-        { label: "Việt", flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
-        { label: "Indo", flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
-        { label: "한국어", flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
-        { label: "日本語", flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
+        { label: "中文", flag: "🇨🇳", code: "zh-CN", ai: "Chinese" }
     ];
 
     var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
@@ -50,10 +42,12 @@
     var navActive = false;
     var lastGpsCheckAt = 0;
 
-    // customer notify state
+    // customer / delay notify state
     var customerPhone = DEFAULT_CUSTOMER_PHONE;
     var notifyShownForRoute = false;
     var arrivalPromptSpoken = false;
+    var rainAlertShownForRoute = false;
+    var currentWeatherInfo = null;
 
     // DOM
     var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
@@ -70,23 +64,8 @@
         return LANGUAGES[selectedLang];
     }
 
-    function isCantoneseMode() {
-        return currentLang().ai === "Cantonese";
-    }
-
-    function getReplyRule() {
-        if (isCantoneseMode()) {
-            return [
-                "IMPORTANT: Reply ONLY in Cantonese.",
-                "Use Hong Kong Cantonese grammar and wording.",
-                "Use Traditional Chinese characters.",
-                "Never reply in Mandarin.",
-                "Never reply in standard written Chinese.",
-                "Prefer words like: 喺, 嘅, 呢度, 嗰邊, 冇, 而家, 左轉, 右轉, 直行, 到咗.",
-                "Keep reply short and natural."
-            ].join(" ");
-        }
-        return "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+    function isChineseMode() {
+        return currentLang().ai === "Chinese";
     }
 
     function getSysPrompt() {
@@ -94,9 +73,13 @@
             ? "\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")
             : "";
 
+        var replyRule = isChineseMode()
+            ? "LANGUAGE: Reply ONLY in Simplified Chinese."
+            : "LANGUAGE: Reply ONLY in English.";
+
         return [
             "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
-            getReplyRule(),
+            replyRule,
             "RULES: Under 60 words. Professional. Action first.",
             "",
             "NAVIGATION REQUESTS:",
@@ -117,83 +100,30 @@
             "Driver is at: " + (currentStreet || "unknown") + ".",
             "If label only shows block/unit without street, infer full address from driver location.",
             "Extract unit/floor/block separately.",
+            "Extract phone number if visible. Return phone as plain digits if possible.",
             "JSON ONLY:",
             '{"address":"FULL street address","unit":"unit/block or null","postal":"postal code or null","recipient":"name or null","sender":"sender or null","phone":"phone or null","language":"detected language","confidence":"high/medium/low"}'
         ].join("\n");
     }
 
     var CHIPS = [
+        "Nearest toilet",
+        "Nearest petrol station",
         "Cannot find address",
         "No answer",
         "Traffic jam",
         "Damaged parcel",
-        "Nearest petrol station",
-        "Nearest toilet",
         "Set customer phone 88918958"
     ];
 
     // ═══════════════════════════════════════════════════════
-    //  CANTONESE TUNING
-    // ═══════════════════════════════════════════════════════
-    function normalizeCantoneseText(text) {
-        var t = String(text || "").trim();
-        if (!t) return t;
-
-        var replacements = [
-            [/最近的/g, "最近嘅"],
-            [/附近的/g, "附近嘅"],
-            [/你的/g, "你嘅"],
-            [/您的/g, "你嘅"],
-            [/当前位置/g, "而家位置"],
-            [/当前的位置/g, "而家位置"],
-            [/现在/g, "而家"],
-            [/位于/g, "喺"],
-            [/这里/g, "呢度"],
-            [/那边/g, "嗰边"],
-            [/在这里/g, "喺呢度"],
-            [/在那边/g, "喺嗰边"],
-            [/在前面/g, "喺前面"],
-            [/在附近/g, "喺附近"],
-            [/在/g, "喺"],
-            [/可以前往/g, "可以去"],
-            [/请前往/g, "請去"],
-            [/向前走/g, "向前行"],
-            [/直走/g, "直行"],
-            [/左转/g, "左轉"],
-            [/右转/g, "右轉"],
-            [/掉头/g, "調頭"],
-            [/到达/g, "到咗"],
-            [/到了/g, "到咗"],
-            [/已到达/g, "已經到咗"],
-            [/厕所/g, "洗手間"],
-            [/卫生间/g, "洗手間"],
-            [/没有/g, "冇"],
-            [/无法/g, "冇辦法"],
-            [/是否/g, "係咪"],
-            [/正在/g, "而家正喺"]
-        ];
-
-        replacements.forEach(function (pair) {
-            t = t.replace(pair[0], pair[1]);
-        });
-
-        return t;
-    }
-
-    function tuneReplyByLanguage(text) {
-        var t = String(text || "");
-        if (isCantoneseMode()) return normalizeCantoneseText(t);
-        return t;
-    }
-
-    // ═══════════════════════════════════════════════════════
-    //  CUSTOMER PHONE / ARRIVAL MESSAGE
+    //  PHONE / DELAY MESSAGE
     // ═══════════════════════════════════════════════════════
     function sanitizePhone(raw) {
         var s = String(raw || "").replace(/[^\d+]/g, "");
         if (!s) return "";
         if (s.indexOf("+") === 0) return s;
-        if (s.length === 8) return "65" + s; // SG local default for wa
+        if (s.length === 8) return "65" + s; // SG default
         return s;
     }
 
@@ -213,11 +143,17 @@
     }
 
     function getArrivalMessage() {
-        if (isCantoneseMode()) return "你好，我大約五分鐘後到，麻煩準備收件，唔該。";
-        if (currentLang().ai === "Chinese Simplified" || currentLang().ai === "Chinese Traditional") {
+        if (isChineseMode()) {
             return "您好，我大约五分钟后到，请准备收件，谢谢。";
         }
         return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
+    }
+
+    function getRainDelayMessage() {
+        if (isChineseMode()) {
+            return "您好，由于目的地下雨和路况影响，您的包裹可能会稍微延迟一点，感谢您的耐心等待。";
+        }
+        return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
     }
 
     function openSms(phone, message) {
@@ -239,32 +175,31 @@
         removeEl("arrivalNotifyCard");
     }
 
+    function removeRainCard() {
+        removeEl("rainDelayCard");
+    }
+
     function showArrivalNotifyCard() {
         removeArrivalCard();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
         var msg = getArrivalMessage();
 
-        var div = document.createElement("div");
-        div.id = "arrivalNotifyCard";
-
-        var title = isCantoneseMode()
-            ? "📩 就快到達，要通知客戶嗎？"
+        var title = isChineseMode()
+            ? "📩 快到了，要通知客户吗？"
             : "📩 Near destination. Notify customer?";
 
-        var etaText = isCantoneseMode()
-            ? "預計大約 " + mins + " 分鐘內到"
+        var etaText = isChineseMode()
+            ? "预计大约 " + mins + " 分钟内到"
             : "Estimated arrival in about " + mins + " minutes";
 
-        var phoneText = customerPhone || DEFAULT_CUSTOMER_PHONE;
-
+        var div = document.createElement("div");
+        div.id = "arrivalNotifyCard";
         div.innerHTML =
             '<div style="background:rgba(227,24,55,0.10);border:1px solid rgba(227,24,55,0.28);border-radius:14px;padding:12px;margin:8px 0;">' +
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(etaText) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' +
-                    'Phone: <span style="color:#fff;font-weight:700;">' + esc(phoneText) + '</span>' +
-                '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
                     '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
@@ -279,18 +214,57 @@
         document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
             openSms(getCustomerPhoneForSms(), msg);
         });
-
         document.getElementById("arrivalWaBtn").addEventListener("click", function () {
             openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
         });
-
         document.getElementById("arrivalCloseBtn").addEventListener("click", function () {
             removeArrivalCard();
         });
     }
 
+    function showRainDelayCard(weatherInfo) {
+        removeRainCard();
+
+        var msg = getRainDelayMessage();
+        var title = isChineseMode()
+            ? "☔ 目的地附近下雨，要通知客户延迟吗？"
+            : "☔ Rain near destination. Send delay notice to customer?";
+
+        var detail = isChineseMode()
+            ? "检测到目的地天气：" + (weatherInfo && weatherInfo.description ? weatherInfo.description : "下雨")
+            : "Detected destination weather: " + (weatherInfo && weatherInfo.description ? weatherInfo.description : "rain");
+
+        var div = document.createElement("div");
+        div.id = "rainDelayCard";
+        div.innerHTML =
+            '<div style="background:rgba(30,144,255,0.10);border:1px solid rgba(30,144,255,0.30);border-radius:14px;padding:12px;margin:8px 0;">' +
+                '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(detail) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
+                    '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Close</button>' +
+                '</div>' +
+            '</div>';
+
+        chatEl.appendChild(div);
+        scrollDown();
+
+        document.getElementById("rainSmsBtn").addEventListener("click", function () {
+            openSms(getCustomerPhoneForSms(), msg);
+        });
+        document.getElementById("rainWaBtn").addEventListener("click", function () {
+            openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+        });
+        document.getElementById("rainCloseBtn").addEventListener("click", function () {
+            removeRainCard();
+        });
+    }
+
     // ═══════════════════════════════════════════════════════
-    //  TTS HELPERS
+    //  TTS
     // ═══════════════════════════════════════════════════════
     function unlockSpeech() {
         if (!window.speechSynthesis || speechUnlocked) return;
@@ -340,7 +314,7 @@
 
             var u = new SpeechSynthesisUtterance(cleanText);
             u.lang = currentLang().code;
-            u.rate = isCantoneseMode() ? 0.88 : 0.92;
+            u.rate = 0.92;
             u.pitch = 1;
             u.volume = 1;
 
@@ -500,6 +474,13 @@
         })
             .then(function (r) { return r.json(); })
             .then(function (d) { cb(d.error ? String(d.error) : null, d.text || ""); })
+            .catch(function (e) { cb(e.message); });
+    }
+
+    function apiWeather(lat, lng, cb) {
+        fetch("/api/weather?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng))
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cb(null, d); })
             .catch(function (e) { cb(e.message); });
     }
 
@@ -718,7 +699,7 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    //  ROUTE + LIVE NAV
+    //  ROUTE + WEATHER + LIVE NAV
     // ═══════════════════════════════════════════════════════
     function fetchRoute(destAddr, cb) {
         if (!gpsPos) {
@@ -736,7 +717,14 @@
 
                 fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng + "&to_lat=" + g.lat + "&to_lng=" + g.lng)
                     .then(function (r) { return r.json(); })
-                    .then(function (rt) { cb(rt.error && !rt.steps.length ? rt.error : null, rt); })
+                    .then(function (rt) {
+                        if (rt && !rt.error) {
+                            rt.dest_lat = g.lat;
+                            rt.dest_lng = g.lng;
+                            rt.dest_display = g.display || destAddr;
+                        }
+                        cb(rt.error && !rt.steps.length ? rt.error : null, rt);
+                    })
                     .catch(function (e) { cb(e.message); });
             })
             .catch(function (e) { cb(e.message); });
@@ -763,9 +751,20 @@
         navActive = true;
         notifyShownForRoute = false;
         arrivalPromptSpoken = false;
+        rainAlertShownForRoute = false;
+        currentWeatherInfo = null;
         removeArrivalCard();
+        removeRainCard();
         highlightActiveStep();
         speakCurrentStepIfNeeded(true);
+
+        if (route.dest_lat != null && route.dest_lng != null) {
+            apiWeather(route.dest_lat, route.dest_lng, function (err, weatherData) {
+                if (!err && weatherData) {
+                    currentWeatherInfo = weatherData;
+                }
+            });
+        }
     }
 
     function highlightActiveStep() {
@@ -793,7 +792,7 @@
         if (!step || !step.text) return;
 
         lastSpokenStep = activeStepIndex;
-        speak(tuneReplyByLanguage(step.text));
+        speak(step.text);
     }
 
     function maybeShowArrivalNotify() {
@@ -807,11 +806,20 @@
 
             if (!arrivalPromptSpoken) {
                 arrivalPromptSpoken = true;
-                speak(isCantoneseMode() ? "仲有大約五分鐘到，要通知客戶嗎？" : "About 5 minutes to arrival. Notify customer?");
+                speak(isChineseMode() ? "还有大约五分钟到，要通知客户吗？" : "About 5 minutes to arrival. Notify customer?");
             }
 
             showArrivalNotifyCard();
         }
+    }
+
+    function maybeShowRainAlert() {
+        if (!navActive || rainAlertShownForRoute) return;
+        if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
+
+        rainAlertShownForRoute = true;
+        speak(isChineseMode() ? "目的地附近正在下雨，要通知客户可能会稍微延迟吗？" : "It is raining near the destination. Send a delay notice to the customer?");
+        showRainDelayCard(currentWeatherInfo);
     }
 
     function updateLiveNavigation() {
@@ -828,14 +836,15 @@
         var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
-            var warnText = isCantoneseMode()
-                ? "前面大約 " + Math.round(dist) + " 米，" + tuneReplyByLanguage(step.text)
+            var warnText = isChineseMode()
+                ? "前方大约 " + Math.round(dist) + " 米，" + step.text
                 : "In " + Math.round(dist) + " meters. " + step.text;
 
             speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
             maybeShowArrivalNotify();
+            maybeShowRainAlert();
             return;
         }
 
@@ -843,7 +852,6 @@
             activeStepIndex++;
             highlightActiveStep();
 
-            // rough remaining ETA based on remaining steps duration
             if (activeRoute && activeRoute.steps) {
                 var remainSecs = 0;
                 var remainMeters = 0;
@@ -854,6 +862,7 @@
                 activeRoute.total_duration = remainSecs;
                 activeRoute.total_distance = remainMeters;
                 maybeShowArrivalNotify();
+                maybeShowRainAlert();
             }
 
             if (activeStepIndex < activeRoute.steps.length) {
@@ -863,8 +872,7 @@
                 }, 500);
             } else {
                 navActive = false;
-                speak(isCantoneseMode() ? "已經到咗目的地。" : "You have arrived.");
-                maybeShowArrivalNotify();
+                speak(isChineseMode() ? "已经到达目的地。" : "You have arrived.");
             }
         }
     }
@@ -876,7 +884,10 @@
         lastSpokenStep = -1;
         notifyShownForRoute = false;
         arrivalPromptSpoken = false;
+        rainAlertShownForRoute = false;
+        currentWeatherInfo = null;
         removeArrivalCard();
+        removeRainCard();
     }
 
     function showRouteSteps(route) {
@@ -892,11 +903,11 @@
         route.steps.forEach(function (s, i) {
             html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
             html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
-            html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(s.text)) + '</div></div>';
+            html += '<div style="color:#fff;font-size:12px">' + esc(s.text) + '</div></div>';
         });
 
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 Repeat Current Step</button>';
+        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Current Step</button>';
         html += '</div></div>';
 
         div.innerHTML = html;
@@ -1009,14 +1020,12 @@
     }
 
     function cleanReplyForSpeech(reply) {
-        var t = String(reply || "")
+        return String(reply || "")
             .replace(/ADDRESS:\s*.*$/im, "")
             .replace(/PLACE:\s*.*$/im, "")
             .replace(/[•\-\*]/g, "")
             .replace(/\n+/g, ". ")
             .trim();
-
-        return tuneReplyByLanguage(t);
     }
 
     function extractPhoneFromText(text) {
@@ -1033,7 +1042,6 @@
 
         var rawText = text.trim();
 
-        // local phone command
         var phoneMatch = rawText.match(/set customer phone\s+([+\d\s-]+)/i);
         if (phoneMatch && phoneMatch[1]) {
             if (setCustomerPhone(phoneMatch[1])) {
@@ -1047,7 +1055,6 @@
             return;
         }
 
-        // if user types a phone in normal text, save it too
         var maybePhone = extractPhoneFromText(rawText);
         if (maybePhone) setCustomerPhone(maybePhone);
 
@@ -1070,7 +1077,6 @@
                 return;
             }
 
-            reply = tuneReplyByLanguage(reply);
             addBubble("assistant", reply);
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
@@ -1081,13 +1087,13 @@
 
                 setTimeout(function () {
                     speak(cleanReplyForSpeech(reply), function () {
-                        addBubble("assistant", isCantoneseMode() ? "🗺 而家開始導航..." : "🗺 Getting directions...");
+                        addBubble("assistant", isChineseMode() ? "🗺 现在开始导航..." : "🗺 Getting directions...");
                         fetchRoute(navAddr, function (routeErr, route) {
                             if (!routeErr && route && route.steps && route.steps.length) {
                                 showRouteSteps(route);
                                 startLiveNavigation(route);
                             } else {
-                                addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
+                                addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
                                 restartMicAfterReply();
                             }
                         });
@@ -1145,24 +1151,22 @@
                     showDeliveryCard(parsed);
 
                     var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
-                    voice = tuneReplyByLanguage(voice);
 
                     setTimeout(function () {
                         speak(voice, function () {
-                            addBubble("assistant", isCantoneseMode() ? "🗺 而家開始導航..." : "🗺 Getting directions...");
+                            addBubble("assistant", isChineseMode() ? "🗺 现在开始导航..." : "🗺 Getting directions...");
                             fetchRoute(fullAddr, function (re, route) {
                                 if (!re && route && route.steps && route.steps.length) {
                                     showRouteSteps(route);
                                     startLiveNavigation(route);
                                 } else {
-                                    addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
+                                    addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
                                     restartMicAfterReply();
                                 }
                             });
                         });
                     }, 150);
                 } else {
-                    reply = tuneReplyByLanguage(reply);
                     addBubble("assistant", reply);
                     setTimeout(function () {
                         speak(reply, restartMicAfterReply);
@@ -1229,7 +1233,7 @@
                     showRouteSteps(r);
                     startLiveNavigation(r);
                 } else {
-                    addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
+                    addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
                 }
             });
         }
@@ -1245,7 +1249,8 @@
         "Ready " + mode + ".\n" +
         "1️⃣ Pick language\n" +
         "2️⃣ Tap 🎙️ once\n" +
-        "3️⃣ Say nearest toilet / 最近洗手間喺邊\n" +
-        "4️⃣ To save phone, type: Set customer phone 88918958"
+        "3️⃣ Scan parcel label to capture phone\n" +
+        "4️⃣ Ask for a route\n" +
+        "5️⃣ Rain delay popup will appear automatically if destination is raining"
     );
 })();
