@@ -1,5 +1,4 @@
 import os
-import json
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 
@@ -7,6 +6,7 @@ app = Flask(__name__, static_folder="static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+OPENWEATHER_API_KEY = os.environ.get("OPENWEATHER_API_KEY", "")
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude")
 
 
@@ -32,8 +32,11 @@ def geocode():
         resp = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={
-                "lat": lat, "lon": lng,
-                "format": "json", "addressdetails": 1, "zoom": 18
+                "lat": lat,
+                "lon": lng,
+                "format": "json",
+                "addressdetails": 1,
+                "zoom": 18
             },
             headers={"User-Agent": "NinjaCoPilot/1.0"},
             timeout=5
@@ -60,7 +63,7 @@ def geocode():
         if postcode:
             parts.append(postcode)
 
-        address = ", ".join(parts) if parts else data.get("display_name", str(lat) + "," + str(lng))
+        address = ", ".join(parts) if parts else data.get("display_name", f"{lat},{lng}")
         return jsonify({"address": address, "raw": addr})
 
     except Exception as e:
@@ -70,7 +73,7 @@ def geocode():
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
-        data = request.json
+        data = request.json or {}
         system = data.get("system", "")
         messages = data.get("messages", [])
 
@@ -176,6 +179,67 @@ def route():
         return jsonify({"error": str(e), "steps": []})
 
 
+@app.route("/api/weather")
+def weather():
+    """Check weather at destination lat/lng using OpenWeather."""
+    try:
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
+
+        if not OPENWEATHER_API_KEY:
+            return jsonify({
+                "status": "weather_unavailable",
+                "is_rain": False,
+                "description": "Weather API key not configured"
+            })
+
+        resp = requests.get(
+            "https://api.openweathermap.org/data/2.5/weather",
+            params={
+                "lat": lat,
+                "lon": lng,
+                "appid": OPENWEATHER_API_KEY,
+                "units": "metric"
+            },
+            timeout=8
+        )
+        data = resp.json()
+
+        weather_list = data.get("weather", [])
+        weather_main = ""
+        weather_desc = ""
+        if weather_list:
+            weather_main = str(weather_list[0].get("main", "")).lower()
+            weather_desc = str(weather_list[0].get("description", "")).lower()
+
+        is_rain = (
+            "rain" in weather_main
+            or "drizzle" in weather_main
+            or "thunderstorm" in weather_main
+            or "rain" in weather_desc
+            or "drizzle" in weather_desc
+            or "thunderstorm" in weather_desc
+        )
+
+        return jsonify({
+            "status": "ok",
+            "is_rain": is_rain,
+            "main": weather_main,
+            "description": weather_desc or weather_main or "unknown",
+            "temp_c": data.get("main", {}).get("temp"),
+            "raw": data
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "weather_error",
+            "is_rain": False,
+            "description": str(e)
+        })
+
+
 def build_instruction(m_type, modifier, name, distance):
     """Convert OSRM maneuver into spoken direction."""
     dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance/1000, 1)}km"
@@ -214,7 +278,7 @@ def build_instruction(m_type, modifier, name, distance):
 @app.route("/api/scan", methods=["POST"])
 def scan():
     try:
-        data = request.json
+        data = request.json or {}
         system = data.get("system", "")
         image_base64 = data.get("image_base64", "")
         ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
@@ -236,7 +300,7 @@ def transcribe():
         import base64
         import tempfile
 
-        data = request.json
+        data = request.json or {}
         audio_base64 = data.get("audio_base64", "")
         language = data.get("language", "en")
 
@@ -256,15 +320,7 @@ def transcribe():
                     "en-SG": "en",
                     "zh-CN": "zh",
                     "zh-TW": "zh",
-                    "zh-HK": "zh",
-                    "yue-Hant-HK": "zh",
-                    "ms-MY": "ms",
-                    "ta-IN": "ta",
-                    "th-TH": "th",
-                    "vi-VN": "vi",
-                    "id-ID": "id",
-                    "ko-KR": "ko",
-                    "ja-JP": "ja"
+                    "zh-HK": "zh"
                 }
 
                 whisper_lang = "en"
