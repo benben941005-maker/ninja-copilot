@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════
-//  NINJA CO-PILOT — Full JS
-//  EN / 中文
+//  NINJA CO-PILOT — Multilanguage + Rain Alert + ETA Notify
 //  Safari/desktop: SpeechRecognition
 //  Chrome iOS: MediaRecorder → backend transcribe
 //  Scan label → extract phone
 //  In-app live navigation
 //  ETA notify + rain delay popup
+//  SMS / WhatsApp customer messages ALWAYS in English
 // ═══════════════════════════════════════════════════════════
 
 (function () {
@@ -23,8 +23,17 @@
     var useRecorder = !hasSR;
 
     var LANGUAGES = [
-        { label: "EN", flag: "🇬🇧", code: "en-SG", ai: "English" },
-        { label: "中文", flag: "🇨🇳", code: "zh-CN", ai: "Chinese" }
+        { label: "EN",     flag: "🇬🇧", code: "en-SG",      ai: "English" },
+        { label: "中文",    flag: "🇨🇳", code: "zh-CN",      ai: "Chinese Simplified" },
+        { label: "繁體",    flag: "🇹🇼", code: "zh-TW",      ai: "Chinese Traditional" },
+        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK",      ai: "Cantonese" },
+        { label: "Malay",  flag: "🇲🇾", code: "ms-MY",      ai: "Malay" },
+        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN",      ai: "Tamil" },
+        { label: "ไทย",    flag: "🇹🇭", code: "th-TH",      ai: "Thai" },
+        { label: "Việt",   flag: "🇻🇳", code: "vi-VN",      ai: "Vietnamese" },
+        { label: "Indo",   flag: "🇮🇩", code: "id-ID",      ai: "Bahasa Indonesia" },
+        { label: "한국어",   flag: "🇰🇷", code: "ko-KR",      ai: "Korean" },
+        { label: "日本語",   flag: "🇯🇵", code: "ja-JP",      ai: "Japanese" }
     ];
 
     var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
@@ -64,8 +73,13 @@
         return LANGUAGES[selectedLang];
     }
 
-    function isChineseMode() {
-        return currentLang().ai === "Chinese";
+    function isCantoneseMode() {
+        return currentLang().ai === "Cantonese";
+    }
+
+    function isChineseLikeMode() {
+        var ai = currentLang().ai;
+        return ai === "Chinese Simplified" || ai === "Chinese Traditional" || ai === "Cantonese";
     }
 
     function getSysPrompt() {
@@ -73,9 +87,18 @@
             ? "\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")
             : "";
 
-        var replyRule = isChineseMode()
-            ? "LANGUAGE: Reply ONLY in Simplified Chinese."
-            : "LANGUAGE: Reply ONLY in English.";
+        var replyRule;
+        if (isCantoneseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Cantonese.",
+                "Use Hong Kong Cantonese grammar and wording.",
+                "Use Traditional Chinese characters.",
+                "Never reply in Mandarin.",
+                "Never reply in standard written Chinese."
+            ].join(" ");
+        } else {
+            replyRule = "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+        }
 
         return [
             "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
@@ -107,14 +130,160 @@
     }
 
     var CHIPS = [
-        "Nearest toilet",
-        "Nearest petrol station",
         "Cannot find address",
         "No answer",
         "Traffic jam",
         "Damaged parcel",
+        "Nearest petrol station",
+        "Nearest toilet",
         "Set customer phone 88918958"
     ];
+
+    // ═══════════════════════════════════════════════════════
+    //  UI TEXT
+    // ═══════════════════════════════════════════════════════
+    function uiText(key) {
+        var ai = currentLang().ai;
+
+        var zh = {
+            ready: "准备好",
+            pick_language: "选择语言",
+            tap_mic_once: "按一下 🎙️",
+            scan_label: "扫描包裹标签来读取电话号码",
+            ask_route: "输入目的地或说出附近地点",
+            rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
+            route_starting: "🗺 现在开始导航...",
+            route_not_found: "找不到路线。",
+            notify_arrival: "📩 快到了，要通知客户吗？",
+            eta_about: "预计大约 ",
+            eta_minutes: " 分钟内到",
+            close: "关闭",
+            rain_near_dest: "☔ 目的地附近下雨，要通知客户延迟吗？",
+            detected_weather: "检测到目的地天气：",
+            about_5_min: "还有大约五分钟到，要通知客户吗？",
+            raining_prompt: "目的地附近正在下雨，要通知客户可能会稍微延迟吗？",
+            arrived: "已经到达目的地。",
+            route_notif: "前方大约 ",
+            meters: " 米，",
+            customer_phone_saved: "客户号码已保存：",
+            invalid_phone: "电话号码无效。",
+            weather_unknown: "下雨",
+            processing: "Processing..."
+        };
+
+        var yue = {
+            ready: "準備好",
+            pick_language: "揀語言",
+            tap_mic_once: "撳一下 🎙️",
+            scan_label: "掃描包裹標籤讀取電話號碼",
+            ask_route: "輸入目的地或者講附近地點",
+            rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
+            route_starting: "🗺 而家開始導航...",
+            route_not_found: "搵唔到路線。",
+            notify_arrival: "📩 就快到，要通知客戶嗎？",
+            eta_about: "預計大約 ",
+            eta_minutes: " 分鐘內到",
+            close: "關閉",
+            rain_near_dest: "☔ 目的地附近落雨，要通知客戶延遲嗎？",
+            detected_weather: "檢測到目的地天氣：",
+            about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
+            raining_prompt: "目的地附近正喺落雨，要通知客戶可能會遲少少嗎？",
+            arrived: "已經到咗目的地。",
+            route_notif: "前面大約 ",
+            meters: " 米，",
+            customer_phone_saved: "客戶電話已保存：",
+            invalid_phone: "電話號碼無效。",
+            weather_unknown: "落雨",
+            processing: "Processing..."
+        };
+
+        var en = {
+            ready: "Ready",
+            pick_language: "Pick language",
+            tap_mic_once: "Tap 🎙️ once",
+            scan_label: "Scan parcel label to capture phone",
+            ask_route: "Ask for a route",
+            rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
+            route_starting: "🗺 Getting directions...",
+            route_not_found: "Route not found.",
+            notify_arrival: "📩 Near destination. Notify customer?",
+            eta_about: "Estimated arrival in about ",
+            eta_minutes: " minutes",
+            close: "Close",
+            rain_near_dest: "☔ Rain near destination. Send delay notice to customer?",
+            detected_weather: "Detected destination weather: ",
+            about_5_min: "About 5 minutes to arrival. Notify customer?",
+            raining_prompt: "It is raining near the destination. Send a delay notice to the customer?",
+            arrived: "You have arrived.",
+            route_notif: "In ",
+            meters: " meters, ",
+            customer_phone_saved: "Customer phone saved: ",
+            invalid_phone: "Invalid phone number.",
+            weather_unknown: "rain",
+            processing: "Processing..."
+        };
+
+        var map;
+        if (ai === "Chinese Simplified" || ai === "Chinese Traditional") map = zh;
+        else if (ai === "Cantonese") map = yue;
+        else map = en;
+
+        return map[key] || en[key] || key;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  CANTONESE SHAPING
+    // ═══════════════════════════════════════════════════════
+    function normalizeCantoneseText(text) {
+        var t = String(text || "").trim();
+        if (!t) return t;
+
+        var replacements = [
+            [/最近的/g, "最近嘅"],
+            [/附近的/g, "附近嘅"],
+            [/你的/g, "你嘅"],
+            [/您的/g, "你嘅"],
+            [/当前位置/g, "而家位置"],
+            [/当前的位置/g, "而家位置"],
+            [/现在/g, "而家"],
+            [/位于/g, "喺"],
+            [/这里/g, "呢度"],
+            [/那边/g, "嗰邊"],
+            [/在这里/g, "喺呢度"],
+            [/在那边/g, "喺嗰邊"],
+            [/在前面/g, "喺前面"],
+            [/在附近/g, "喺附近"],
+            [/在/g, "喺"],
+            [/可以前往/g, "可以去"],
+            [/请前往/g, "請去"],
+            [/向前走/g, "向前行"],
+            [/直走/g, "直行"],
+            [/左转/g, "左轉"],
+            [/右转/g, "右轉"],
+            [/掉头/g, "調頭"],
+            [/到达/g, "到咗"],
+            [/到了/g, "到咗"],
+            [/已到达/g, "已經到咗"],
+            [/厕所/g, "洗手間"],
+            [/卫生间/g, "洗手間"],
+            [/没有/g, "冇"],
+            [/无法/g, "冇辦法"],
+            [/是否/g, "係咪"],
+            [/正在/g, "而家正喺"]
+        ];
+
+        replacements.forEach(function (pair) {
+            t = t.replace(pair[0], pair[1]);
+        });
+
+        return t;
+    }
+
+    function tuneReplyByLanguage(text) {
+        var t = String(text || "");
+        if (isCantoneseMode()) return normalizeCantoneseText(t);
+        return t;
+    }
 
     // ═══════════════════════════════════════════════════════
     //  PHONE / MESSAGES
@@ -142,17 +311,13 @@
         return customerPhone.replace(/^\+/, "");
     }
 
+    // ALWAYS ENGLISH
     function getArrivalMessage() {
-        if (isChineseMode()) {
-            return "您好，我大约五分钟后到，请准备收件，谢谢。";
-        }
         return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
     }
 
+    // ALWAYS ENGLISH
     function getRainDelayMessage() {
-        if (isChineseMode()) {
-            return "您好，由于目的地下雨和路况影响，您的包裹可能会稍微延迟一点，感谢您的耐心等待。";
-        }
         return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
     }
 
@@ -182,12 +347,8 @@
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
         var msg = getArrivalMessage();
-        var title = isChineseMode()
-            ? "📩 快到了，要通知客户吗？"
-            : "📩 Near destination. Notify customer?";
-        var etaText = isChineseMode()
-            ? "预计大约 " + mins + " 分钟内到"
-            : "Estimated arrival in about " + mins + " minutes";
+        var title = uiText("notify_arrival");
+        var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
 
         var div = document.createElement("div");
         div.id = "arrivalNotifyCard";
@@ -200,7 +361,7 @@
                 '<div style="display:flex;gap:8px;">' +
                     '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
                     '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
-                    '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Close</button>' +
+                    '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
 
@@ -222,12 +383,8 @@
         removeRainCard();
 
         var msg = getRainDelayMessage();
-        var title = isChineseMode()
-            ? "☔ 目的地附近下雨，要通知客户延迟吗？"
-            : "☔ Rain near destination. Send delay notice to customer?";
-        var detail = isChineseMode()
-            ? "检测到目的地天气：" + (weatherInfo && weatherInfo.description ? weatherInfo.description : "下雨")
-            : "Detected destination weather: " + (weatherInfo && weatherInfo.description ? weatherInfo.description : "rain");
+        var title = uiText("rain_near_dest");
+        var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
 
         var div = document.createElement("div");
         div.id = "rainDelayCard";
@@ -240,7 +397,7 @@
                 '<div style="display:flex;gap:8px;">' +
                     '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
                     '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
-                    '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Close</button>' +
+                    '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
 
@@ -309,7 +466,7 @@
 
             var u = new SpeechSynthesisUtterance(cleanText);
             u.lang = currentLang().code;
-            u.rate = 0.92;
+            u.rate = isCantoneseMode() ? 0.88 : 0.92;
             u.pitch = 1;
             u.volume = 1;
 
@@ -787,7 +944,7 @@
         if (!step || !step.text) return;
 
         lastSpokenStep = activeStepIndex;
-        speak(step.text);
+        speak(tuneReplyByLanguage(step.text));
     }
 
     function maybeShowArrivalNotify() {
@@ -801,7 +958,7 @@
 
             if (!arrivalPromptSpoken) {
                 arrivalPromptSpoken = true;
-                speak(isChineseMode() ? "还有大约五分钟到，要通知客户吗？" : "About 5 minutes to arrival. Notify customer?");
+                speak(uiText("about_5_min"));
             }
 
             showArrivalNotifyCard();
@@ -813,7 +970,7 @@
         if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
 
         rainAlertShownForRoute = true;
-        speak(isChineseMode() ? "目的地附近正在下雨，要通知客户可能会稍微延迟吗？" : "It is raining near the destination. Send a delay notice to the customer?");
+        speak(uiText("raining_prompt"));
         showRainDelayCard(currentWeatherInfo);
     }
 
@@ -831,9 +988,7 @@
         var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
-            var warnText = isChineseMode()
-                ? "前方大约 " + Math.round(dist) + " 米，" + step.text
-                : "In " + Math.round(dist) + " meters. " + step.text;
+            var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
 
             speak(warnText);
             lastSpokenStep = activeStepIndex;
@@ -867,7 +1022,7 @@
                 }, 500);
             } else {
                 navActive = false;
-                speak(isChineseMode() ? "已经到达目的地。" : "You have arrived.");
+                speak(uiText("arrived"));
             }
         }
     }
@@ -898,7 +1053,7 @@
         route.steps.forEach(function (s, i) {
             html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
             html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
-            html += '<div style="color:#fff;font-size:12px">' + esc(s.text) + '</div></div>';
+            html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(s.text)) + '</div></div>';
         });
 
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
@@ -1001,7 +1156,7 @@
         var el = document.createElement("div");
         el.id = "proc";
         el.className = "proc";
-        el.textContent = "Processing...";
+        el.textContent = uiText("processing");
         chatEl.appendChild(el);
         scrollDown();
     }
@@ -1015,12 +1170,14 @@
     }
 
     function cleanReplyForSpeech(reply) {
-        return String(reply || "")
+        var t = String(reply || "")
             .replace(/ADDRESS:\s*.*$/im, "")
             .replace(/PLACE:\s*.*$/im, "")
             .replace(/[•\-\*]/g, "")
             .replace(/\n+/g, ". ")
             .trim();
+
+        return tuneReplyByLanguage(t);
     }
 
     function extractPhoneFromText(text) {
@@ -1041,9 +1198,9 @@
         if (phoneMatch && phoneMatch[1]) {
             if (setCustomerPhone(phoneMatch[1])) {
                 addBubble("user", rawText);
-                addBubble("assistant", "Customer phone saved: " + customerPhone);
+                addBubble("assistant", uiText("customer_phone_saved") + customerPhone);
             } else {
-                addBubble("assistant", "Invalid phone number.");
+                addBubble("assistant", uiText("invalid_phone"));
             }
             inp.value = "";
             updateSend();
@@ -1072,6 +1229,7 @@
                 return;
             }
 
+            reply = tuneReplyByLanguage(reply);
             addBubble("assistant", reply);
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
@@ -1082,13 +1240,13 @@
 
                 setTimeout(function () {
                     speak(cleanReplyForSpeech(reply), function () {
-                        addBubble("assistant", isChineseMode() ? "🗺 现在开始导航..." : "🗺 Getting directions...");
+                        addBubble("assistant", uiText("route_starting"));
                         fetchRoute(navAddr, function (routeErr, route) {
                             if (!routeErr && route && route.steps && route.steps.length) {
                                 showRouteSteps(route);
                                 startLiveNavigation(route);
                             } else {
-                                addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
+                                addBubble("assistant", uiText("route_not_found"));
                                 restartMicAfterReply();
                             }
                         });
@@ -1146,22 +1304,24 @@
                     showDeliveryCard(parsed);
 
                     var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
+                    voice = tuneReplyByLanguage(voice);
 
                     setTimeout(function () {
                         speak(voice, function () {
-                            addBubble("assistant", isChineseMode() ? "🗺 现在开始导航..." : "🗺 Getting directions...");
+                            addBubble("assistant", uiText("route_starting"));
                             fetchRoute(fullAddr, function (re, route) {
                                 if (!re && route && route.steps && route.steps.length) {
                                     showRouteSteps(route);
                                     startLiveNavigation(route);
                                 } else {
-                                    addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
+                                    addBubble("assistant", uiText("route_not_found"));
                                     restartMicAfterReply();
                                 }
                             });
                         });
                     }, 150);
                 } else {
+                    reply = tuneReplyByLanguage(reply);
                     addBubble("assistant", reply);
                     setTimeout(function () {
                         speak(reply, restartMicAfterReply);
@@ -1228,7 +1388,7 @@
                     showRouteSteps(r);
                     startLiveNavigation(r);
                 } else {
-                    addBubble("assistant", isChineseMode() ? "找不到路线。" : "Route not found.");
+                    addBubble("assistant", uiText("route_not_found"));
                 }
             });
         }
@@ -1241,11 +1401,11 @@
     var mode = useRecorder ? "(recording mode)" : "(voice mode)";
     addBubble(
         "assistant",
-        "Ready " + mode + ".\n" +
-        "1️⃣ Pick language\n" +
-        "2️⃣ Tap 🎙️ once\n" +
-        "3️⃣ Scan parcel label to capture phone\n" +
-        "4️⃣ Ask for a route\n" +
-        "5️⃣ Rain delay popup will appear automatically if destination is raining"
+        uiText("ready") + " " + mode + ".\n" +
+        "1️⃣ " + uiText("pick_language") + "\n" +
+        "2️⃣ " + uiText("tap_mic_once") + "\n" +
+        "3️⃣ " + uiText("scan_label") + "\n" +
+        "4️⃣ " + uiText("ask_route") + "\n" +
+        "5️⃣ " + uiText("rain_popup_note")
     );
 })();
