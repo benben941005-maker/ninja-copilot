@@ -64,11 +64,18 @@
         .ar{display:flex;gap:6px}
         .vb{flex:2;padding:12px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
         .vb.lis{background:#ff4444}
-        .scb,.nvb{flex:1;padding:12px;border-radius:10px;border:none;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:1px}
+        .scb,.nvb,.plb{flex:1;padding:12px;border-radius:10px;border:none;color:#fff;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:1px}
         .scb{background:rgba(255,255,255,0.06)}
-        .nvb{background:rgba(76,175,80,0.12);color:#4CAF50;display:none}
-        .scb span:first-child,.nvb span:first-child{font-size:18px}
-        .scb span:last-child,.nvb span:last-child{font-size:9px;font-weight:600}
+        .plb{background:rgba(255,255,255,0.06)}
+        .nvb{background:rgba(227,24,55,0.15);color:#E31837}
+        .scb span:first-child,.nvb span:first-child,.plb span:first-child{font-size:18px}
+        .scb span:last-child,.nvb span:last-child,.plb span:last-child{font-size:9px;font-weight:600}
+        .mic-toggle{display:flex;align-items:center;justify-content:space-between;padding:6px 14px;background:rgba(255,255,255,0.03);border-top:1px solid rgba(255,255,255,0.04)}
+        .mic-toggle span{color:rgba(255,255,255,0.4);font-size:10px;font-weight:600}
+        .toggle{width:36px;height:20px;border-radius:10px;background:rgba(255,255,255,0.15);position:relative;cursor:pointer;border:none;transition:background 0.2s}
+        .toggle.on{background:#E31837}
+        .toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:2px;left:2px;transition:left 0.2s}
+        .toggle.on::after{left:18px}
         @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
     </style>
 </head>
@@ -84,6 +91,10 @@
     <div class="chips" id="chips"></div>
     <div class="chat" id="chat"></div>
     <div class="sb" id="sb"><span>🔊 Speaking...</span><button id="stopBtn">Stop</button></div>
+    <div class="mic-toggle">
+        <span>🎙️ ALWAYS-ON MIC</span>
+        <button class="toggle" id="micToggle"></button>
+    </div>
     <div class="ib">
         <div class="ir">
             <input type="text" id="inp" placeholder="Type or speak in any language...">
@@ -92,9 +103,13 @@
         <div class="ar">
             <button class="vb" id="voiceBtn">🎙️ TAP TO SPEAK</button>
             <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
+            <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
             <button class="nvb" id="navBtn"><span>🚗</span><span>NAV</span></button>
         </div>
-        <input type="file" id="fileIn" accept="image/*" capture="environment" style="display:none">
+        <!-- camera capture -->
+        <input type="file" id="cameraIn" accept="image/*" capture="environment" style="display:none">
+        <!-- photo library (no capture = shows gallery picker) -->
+        <input type="file" id="photoIn" accept="image/*" style="display:none">
     </div>
 </div>
 <script src="ai-driver-copilot.js"></script>
