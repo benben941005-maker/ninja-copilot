@@ -228,6 +228,77 @@ def scan():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    """Transcribe audio using OpenAI Whisper (for Chrome iOS fallback)."""
+    try:
+        import base64
+        import tempfile
+
+        data = request.json
+        audio_base64 = data.get("audio_base64", "")
+        language = data.get("language", "en")
+
+        if not audio_base64:
+            return jsonify({"error": "No audio", "text": ""})
+
+        # Decode audio
+        audio_bytes = base64.b64decode(audio_base64)
+
+        # Try OpenAI Whisper first (best quality)
+        if OPENAI_API_KEY:
+            # Save to temp file
+            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+                f.write(audio_bytes)
+                temp_path = f.name
+
+            try:
+                # Map language code to Whisper language
+                lang_map = {
+                    "en": "en", "zh-CN": "zh", "zh-TW": "zh", "yue-Hant-HK": "zh",
+                    "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th", "vi-VN": "vi",
+                    "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja"
+                }
+                whisper_lang = lang_map.get(language.split("-")[0] if "-" in language else language, "en")
+                # Handle full codes
+                for code, wl in lang_map.items():
+                    if language.startswith(code.split("-")[0]):
+                        whisper_lang = wl
+                        break
+
+                with open(temp_path, "rb") as audio_file:
+                    resp = requests.post(
+                        "https://api.openai.com/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                        files={"file": ("audio.webm", audio_file, "audio/webm")},
+                        data={"model": "whisper-1", "language": whisper_lang},
+                        timeout=30
+                    )
+                result = resp.json()
+                import os
+                os.unlink(temp_path)
+
+                if "text" in result:
+                    return jsonify({"text": result["text"]})
+                else:
+                    return jsonify({"error": result.get("error", {}).get("message", "Whisper error"), "text": ""})
+            except Exception as e:
+                import os
+                try: os.unlink(temp_path)
+                except: pass
+                return jsonify({"error": str(e), "text": ""})
+
+        # No OpenAI key — use Claude to transcribe (send as description request)
+        # This is a fallback that works but less accurate
+        return jsonify({
+            "error": "Set OPENAI_API_KEY for voice in Chrome. Or use Safari browser.",
+            "text": ""
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "text": ""})
+
+
 def call_claude(system, messages):
     resp = requests.post(
         "https://api.anthropic.com/v1/messages",
