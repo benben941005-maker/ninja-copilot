@@ -85,6 +85,131 @@ def chat():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/address-to-latlng")
+def address_to_latlng():
+    """Forward geocode: address text → lat/lng."""
+    try:
+        address = request.args.get("address", "")
+        if not address:
+            return jsonify({"error": "Missing address"}), 400
+
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": address, "format": "json", "limit": 1},
+            headers={"User-Agent": "NinjaCoPilot/1.0"},
+            timeout=5
+        )
+        results = resp.json()
+        if not results:
+            return jsonify({"error": "Address not found", "lat": None, "lng": None})
+
+        return jsonify({
+            "lat": float(results[0]["lat"]),
+            "lng": float(results[0]["lon"]),
+            "display": results[0].get("display_name", "")
+        })
+    except Exception as e:
+        return jsonify({"error": str(e), "lat": None, "lng": None})
+
+
+@app.route("/api/route")
+def route():
+    """Get turn-by-turn driving directions using OSRM (free, no API key)."""
+    try:
+        from_lat = request.args.get("from_lat")
+        from_lng = request.args.get("from_lng")
+        to_lat = request.args.get("to_lat")
+        to_lng = request.args.get("to_lng")
+
+        if not all([from_lat, from_lng, to_lat, to_lng]):
+            return jsonify({"error": "Missing coordinates"}), 400
+
+        # OSRM free routing API — returns real turn-by-turn directions
+        url = (
+            f"https://router.project-osrm.org/route/v1/driving/"
+            f"{from_lng},{from_lat};{to_lng},{to_lat}"
+            f"?overview=full&steps=true&annotations=false"
+        )
+        resp = requests.get(url, timeout=10)
+        data = resp.json()
+
+        if data.get("code") != "Ok" or not data.get("routes"):
+            return jsonify({"error": "No route found", "steps": []})
+
+        route_data = data["routes"][0]
+        legs = route_data.get("legs", [])
+
+        steps = []
+        for leg in legs:
+            for step in leg.get("steps", []):
+                maneuver = step.get("maneuver", {})
+                name = step.get("name", "")
+                distance = step.get("distance", 0)
+                duration = step.get("duration", 0)
+                instruction = step.get("name", "")
+                modifier = maneuver.get("modifier", "")
+                m_type = maneuver.get("type", "")
+
+                # Build human-readable instruction
+                text = build_instruction(m_type, modifier, name, distance)
+                if text:
+                    steps.append({
+                        "text": text,
+                        "distance": round(distance),
+                        "duration": round(duration),
+                        "type": m_type,
+                        "modifier": modifier
+                    })
+
+        total_dist = round(route_data.get("distance", 0))
+        total_time = round(route_data.get("duration", 0))
+
+        return jsonify({
+            "steps": steps,
+            "total_distance": total_dist,
+            "total_duration": total_time,
+            "summary": f"{total_dist}m, ~{total_time // 60} min"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "steps": []})
+
+
+def build_instruction(m_type, modifier, name, distance):
+    """Convert OSRM maneuver into spoken direction."""
+    dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance/1000, 1)}km"
+    road = f" onto {name}" if name else ""
+
+    if m_type == "depart":
+        return f"Start driving{road} for {dist_str}"
+    elif m_type == "arrive":
+        return f"You have arrived at your destination{road}"
+    elif m_type == "turn":
+        return f"Turn {modifier}{road}, continue for {dist_str}"
+    elif m_type == "new name":
+        return f"Continue{road} for {dist_str}"
+    elif m_type == "merge":
+        return f"Merge {modifier}{road} for {dist_str}"
+    elif m_type == "fork":
+        return f"Keep {modifier} at the fork{road} for {dist_str}"
+    elif m_type == "roundabout" or m_type == "rotary":
+        return f"Enter roundabout, exit{road}, continue for {dist_str}"
+    elif m_type == "end of road":
+        return f"At end of road, turn {modifier}{road} for {dist_str}"
+    elif m_type == "continue":
+        return f"Continue straight{road} for {dist_str}"
+    elif m_type == "on ramp" or m_type == "off ramp":
+        return f"Take the ramp {modifier}{road} for {dist_str}"
+    elif m_type == "notification":
+        return None
+    else:
+        if modifier:
+            return f"Go {modifier}{road} for {dist_str}"
+        elif name:
+            return f"Continue on {name} for {dist_str}"
+        return None
+
+
 @app.route("/api/scan", methods=["POST"])
 def scan():
     try:

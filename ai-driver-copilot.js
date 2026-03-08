@@ -305,8 +305,12 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    //  NAVIGATION
+    //  NAVIGATION — get real directions + speak them
     // ═══════════════════════════════════════════════════════
+    var routeSteps = [];
+    var routeStep = 0;
+    var speakingRoute = false;
+
     function autoNavigate(dest) {
         var ua = navigator.userAgent.toLowerCase();
         if (/android/.test(ua)) {
@@ -325,6 +329,122 @@
     }
     function openWaze(dest) {
         window.open("https://waze.com/ul?q=" + encodeURIComponent(dest) + "&navigate=yes", "_blank");
+    }
+
+    // Get real route from OSRM via backend
+    function fetchRoute(destAddr, callback) {
+        if (!gpsPos) { callback("GPS not available"); return; }
+
+        // Step 1: convert address to lat/lng
+        fetch("/api/address-to-latlng?address=" + encodeURIComponent(destAddr))
+            .then(function (r) { return r.json(); })
+            .then(function (geo) {
+                if (!geo.lat || !geo.lng) { callback("Could not find address location"); return; }
+
+                // Step 2: get route directions
+                fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng
+                    + "&to_lat=" + geo.lat + "&to_lng=" + geo.lng)
+                    .then(function (r) { return r.json(); })
+                    .then(function (route) {
+                        if (route.error && !route.steps.length) { callback(route.error); return; }
+                        callback(null, route);
+                    })
+                    .catch(function (e) { callback(e.message); });
+            })
+            .catch(function (e) { callback(e.message); });
+    }
+
+    // Show route steps in chat + start speaking them
+    function showRouteSteps(route) {
+        removeEl("routeCard");
+        routeSteps = route.steps || [];
+        routeStep = 0;
+
+        if (!routeSteps.length) return;
+
+        var div = document.createElement("div");
+        div.id = "routeCard";
+
+        // Summary
+        var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
+        html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">\ud83d\udea3 ROUTE DIRECTIONS \u2022 ' + esc(route.summary || "") + '</div>';
+
+        // Steps list
+        routeSteps.forEach(function (s, i) {
+            var icon = getStepIcon(s.type, s.modifier);
+            html += '<div class="route-step" id="rs' + i + '" style="display:flex;align-items:flex-start;gap:8px;padding:8px 6px;border-radius:8px;margin-bottom:2px;'
+                + (i === 0 ? 'background:rgba(227,24,55,0.1);border:1px solid rgba(227,24,55,0.2)' : 'background:transparent;border:1px solid transparent')
+                + '">';
+            html += '<span style="font-size:18px;flex-shrink:0;width:24px;text-align:center">' + icon + '</span>';
+            html += '<div style="flex:1">';
+            html += '<div style="color:#fff;font-size:13px;font-weight:' + (i === 0 ? '700' : '500') + '">' + esc(s.text) + '</div>';
+            if (s.distance > 0) html += '<div style="color:rgba(255,255,255,0.35);font-size:10px">' + s.distance + 'm</div>';
+            html += '</div></div>';
+        });
+
+        // Control buttons
+        html += '<div style="display:flex;gap:6px;margin-top:8px">';
+        html += '<button id="routeSpeak" style="flex:2;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\ud83d\udd0a Speak All Directions</button>';
+        html += '<button id="routeGmaps" style="flex:1;padding:10px;border-radius:8px;border:none;background:#4285F4;color:#fff;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\ud83d\uddfa Maps</button>';
+        html += '<button id="routeWaze" style="flex:1;padding:10px;border-radius:8px;border:none;background:#33CCFF;color:#000;font-size:11px;font-weight:700;cursor:pointer;font-family:\'DM Sans\',sans-serif">\ud83d\udea6 Waze</button>';
+        html += '</div></div>';
+
+        div.innerHTML = html;
+        chatEl.appendChild(div);
+        scrollDown();
+
+        // Wire buttons
+        document.getElementById("routeSpeak").addEventListener("click", function () { speakAllSteps(); });
+        document.getElementById("routeGmaps").addEventListener("click", function () { openGoogleMaps(scannedAddr); });
+        document.getElementById("routeWaze").addEventListener("click", function () { openWaze(scannedAddr); });
+    }
+
+    function getStepIcon(type, modifier) {
+        if (type === "depart") return "\ud83d\ude80";
+        if (type === "arrive") return "\ud83c\udfc1";
+        if (type === "roundabout" || type === "rotary") return "\ud83d\udd04";
+        if (modifier === "left" || modifier === "slight left" || modifier === "sharp left") return "\u2b05\ufe0f";
+        if (modifier === "right" || modifier === "slight right" || modifier === "sharp right") return "\u27a1\ufe0f";
+        if (modifier === "uturn") return "\u21a9\ufe0f";
+        return "\u2b06\ufe0f";
+    }
+
+    // Speak steps one by one with visual highlight
+    function speakAllSteps() {
+        if (speakingRoute) { stopSpeak(); speakingRoute = false; return; }
+        speakingRoute = true;
+        routeStep = 0;
+        speakNextStep();
+    }
+
+    function speakNextStep() {
+        if (!speakingRoute || routeStep >= routeSteps.length) {
+            speakingRoute = false;
+            afterAIReply();
+            return;
+        }
+
+        // Highlight current step
+        routeSteps.forEach(function (_, i) {
+            var el = document.getElementById("rs" + i);
+            if (el) {
+                if (i === routeStep) {
+                    el.style.background = "rgba(227,24,55,0.1)";
+                    el.style.borderColor = "rgba(227,24,55,0.2)";
+                    el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                } else {
+                    el.style.background = "transparent";
+                    el.style.borderColor = "transparent";
+                }
+            }
+        });
+
+        var step = routeSteps[routeStep];
+        speak("Step " + (routeStep + 1) + ". " + step.text, function () {
+            routeStep++;
+            // Small pause between steps
+            setTimeout(speakNextStep, 500);
+        });
     }
 
     // ═══════════════════════════════════════════════════════
@@ -423,14 +543,36 @@
                 if (parsed && parsed.address) {
                     var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
                     scannedAddr = fullAddr;
+
+                    // 1. Show unit number big + map
                     showDeliveryCard(parsed);
+
+                    // 2. Announce address
                     var voiceMsg = parsed.unit
-                        ? "Unit " + parsed.unit + ". " + parsed.address + ". Opening navigation."
-                        : parsed.address + ". Opening navigation.";
+                        ? "Unit " + parsed.unit + ". " + parsed.address + "."
+                        : parsed.address + ".";
+
                     speak(voiceMsg, function () {
-                        autoNavigate(fullAddr);
-                        // After navigating, show tap button for iOS
-                        setTimeout(afterAIReply, 3000);
+                        // 3. Fetch REAL route directions
+                        addBubble("assistant", "\ud83d\uddfa Fetching route directions...");
+                        fetchRoute(fullAddr, function (routeErr, route) {
+                            if (routeErr || !route || !route.steps || !route.steps.length) {
+                                addBubble("assistant", "Could not get route. Opening maps instead.");
+                                autoNavigate(fullAddr);
+                                afterAIReply();
+                                return;
+                            }
+
+                            // 4. Show steps visually
+                            showRouteSteps(route);
+
+                            // 5. Speak "Route found, X steps, Y minutes"
+                            var summary = "Route found. " + route.steps.length + " steps. About " + Math.round((route.total_duration || 0) / 60) + " minutes.";
+                            speak(summary, function () {
+                                // 6. Auto-speak all directions
+                                speakAllSteps();
+                            });
+                        });
                     });
                 } else { addBubble("assistant", reply); afterAIReply(); }
             });
@@ -456,7 +598,18 @@
     photoBtn.addEventListener("click", function () { photoIn.click(); });
     cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
     photoIn.addEventListener("change", function () { handleScan(photoIn); });
-    navBtnEl.addEventListener("click", function () { if (scannedAddr) autoNavigate(scannedAddr); });
+    navBtnEl.addEventListener("click", function () {
+        if (scannedAddr) {
+            fetchRoute(scannedAddr, function (err, route) {
+                if (!err && route && route.steps && route.steps.length) {
+                    showRouteSteps(route);
+                    speakAllSteps();
+                } else {
+                    autoNavigate(scannedAddr);
+                }
+            });
+        }
+    });
     stopBtnEl.addEventListener("click", stopSpeak);
 
     // iOS: big tap button — this IS a direct user gesture so it works
