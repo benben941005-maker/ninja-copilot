@@ -26,12 +26,16 @@
     var sendBtn = document.getElementById("sendBtn");
     var voiceBtn = document.getElementById("voiceBtn");
     var scanBtn = document.getElementById("scanBtn");
+    var photoBtn = document.getElementById("photoBtn");
     var navBtnEl = document.getElementById("navBtn");
     var stopBtnEl = document.getElementById("stopBtn");
+    var micToggle = document.getElementById("micToggle");
     var sbEl = document.getElementById("sb");
     var gpsEl = document.getElementById("gps");
     var chipsEl = document.getElementById("chips");
-    var fileIn = document.getElementById("fileIn");
+    var cameraIn = document.getElementById("cameraIn");
+    var photoIn = document.getElementById("photoIn");
+    var alwaysOnMic = false;
 
     // ─── Prompts ───
     var SYS = [
@@ -186,6 +190,10 @@
             voiceBtn.classList.remove("lis");
             return;
         }
+        startListening();
+    }
+
+    function startListening() {
         var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SR) {
             alert("Speech recognition not supported in this browser");
@@ -197,26 +205,56 @@
         recognition.lang = "";
 
         recognition.onresult = function (e) {
-            inp.value = e.results[0][0].transcript;
+            var text = e.results[0][0].transcript;
+            inp.value = text;
             isListening = false;
             voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
             voiceBtn.classList.remove("lis");
             updateSend();
+
+            // If always-on mic, auto-send and restart listening
+            if (alwaysOnMic && text.trim()) {
+                sendText(text.trim());
+                setTimeout(function () {
+                    if (alwaysOnMic && !busy) startListening();
+                }, 1000);
+            }
         };
         recognition.onerror = function () {
             isListening = false;
             voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
             voiceBtn.classList.remove("lis");
+            // Restart if always-on
+            if (alwaysOnMic) {
+                setTimeout(function () { if (alwaysOnMic) startListening(); }, 1000);
+            }
         };
         recognition.onend = function () {
             isListening = false;
             voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
             voiceBtn.classList.remove("lis");
+            // Restart if always-on
+            if (alwaysOnMic && !busy) {
+                setTimeout(function () { if (alwaysOnMic) startListening(); }, 500);
+            }
         };
         recognition.start();
         isListening = true;
         voiceBtn.textContent = "\ud83c\udfa4 LISTENING...";
         voiceBtn.classList.add("lis");
+    }
+
+    function toggleAlwaysOnMic() {
+        alwaysOnMic = !alwaysOnMic;
+        micToggle.classList.toggle("on", alwaysOnMic);
+        if (alwaysOnMic) {
+            startListening();
+        } else {
+            if (recognition) recognition.stop();
+            isListening = false;
+            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
+            voiceBtn.classList.remove("lis");
+        }
     }
 
     // ═══════════════════════════════════════════════════════
@@ -404,8 +442,8 @@
     // ═══════════════════════════════════════════════════════
     //  SCAN LABEL
     // ═══════════════════════════════════════════════════════
-    function handleScan() {
-        var file = fileIn.files && fileIn.files[0];
+    function handleScan(fileInput) {
+        var file = fileInput.files && fileInput.files[0];
         if (!file || busy) return;
         busy = true;
 
@@ -423,7 +461,7 @@
                 if (err2) {
                     addBubble("assistant", "Error: " + err2);
                     busy = false;
-                    fileIn.value = "";
+                    fileInput.value = "";
                     return;
                 }
 
@@ -450,7 +488,12 @@
                     addBubble("assistant", reply);
                 }
                 busy = false;
-                fileIn.value = "";
+                fileInput.value = "";
+
+                // Resume always-on mic after scan
+                if (alwaysOnMic) {
+                    setTimeout(function () { if (alwaysOnMic && !busy) startListening(); }, 1000);
+                }
             });
         });
     }
@@ -473,10 +516,13 @@
         inp.addEventListener("input", updateSend);
         inp.addEventListener("keydown", function (e) { if (e.key === "Enter") sendText(); });
         voiceBtn.addEventListener("click", toggleListen);
-        scanBtn.addEventListener("click", function () { fileIn.click(); });
-        fileIn.addEventListener("change", handleScan);
+        scanBtn.addEventListener("click", function () { cameraIn.click(); });
+        photoBtn.addEventListener("click", function () { photoIn.click(); });
+        cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
+        photoIn.addEventListener("change", function () { handleScan(photoIn); });
         navBtnEl.addEventListener("click", startNav);
         stopBtnEl.addEventListener("click", stopSpeak);
+        micToggle.addEventListener("click", toggleAlwaysOnMic);
 
         // Start GPS
         initGPS();
