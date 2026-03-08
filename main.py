@@ -40,23 +40,22 @@ def geocode():
         )
         data = resp.json()
 
-        # Build readable address from components
         addr = data.get("address", {})
         parts = []
-        # Road / street name
+
         road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") or ""
         if road:
             house = addr.get("house_number", "")
             parts.append((house + " " + road).strip())
-        # Neighborhood / suburb
+
         area = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
         if area:
             parts.append(area)
-        # City
+
         city = addr.get("city") or addr.get("town") or addr.get("village") or ""
         if city:
             parts.append(city)
-        # Postal code
+
         postcode = addr.get("postcode", "")
         if postcode:
             parts.append(postcode)
@@ -114,7 +113,7 @@ def address_to_latlng():
 
 @app.route("/api/route")
 def route():
-    """Get turn-by-turn driving directions using OSRM (free, no API key)."""
+    """Get turn-by-turn driving directions using OSRM."""
     try:
         from_lat = request.args.get("from_lat")
         from_lng = request.args.get("from_lng")
@@ -124,11 +123,10 @@ def route():
         if not all([from_lat, from_lng, to_lat, to_lng]):
             return jsonify({"error": "Missing coordinates"}), 400
 
-        # OSRM free routing API — returns real turn-by-turn directions
         url = (
             f"https://router.project-osrm.org/route/v1/driving/"
             f"{from_lng},{from_lat};{to_lng},{to_lat}"
-            f"?overview=full&steps=true&annotations=false"
+            f"?overview=full&steps=true&annotations=false&geometries=geojson"
         )
         resp = requests.get(url, timeout=10)
         data = resp.json()
@@ -146,11 +144,10 @@ def route():
                 name = step.get("name", "")
                 distance = step.get("distance", 0)
                 duration = step.get("duration", 0)
-                instruction = step.get("name", "")
                 modifier = maneuver.get("modifier", "")
                 m_type = maneuver.get("type", "")
+                loc = maneuver.get("location", [None, None])
 
-                # Build human-readable instruction
                 text = build_instruction(m_type, modifier, name, distance)
                 if text:
                     steps.append({
@@ -158,17 +155,21 @@ def route():
                         "distance": round(distance),
                         "duration": round(duration),
                         "type": m_type,
-                        "modifier": modifier
+                        "modifier": modifier,
+                        "lat": loc[1] if len(loc) > 1 else None,
+                        "lng": loc[0] if len(loc) > 0 else None
                     })
 
         total_dist = round(route_data.get("distance", 0))
         total_time = round(route_data.get("duration", 0))
+        geometry = route_data.get("geometry", {})
 
         return jsonify({
             "steps": steps,
             "total_distance": total_dist,
             "total_duration": total_time,
-            "summary": f"{total_dist}m, ~{total_time // 60} min"
+            "summary": f"{total_dist}m, ~{total_time // 60} min",
+            "geometry": geometry
         })
 
     except Exception as e:
@@ -230,7 +231,7 @@ def scan():
 
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
-    """Transcribe audio using OpenAI Whisper (for Chrome iOS fallback)."""
+    """Transcribe audio using OpenAI Whisper."""
     try:
         import base64
         import tempfile
@@ -242,27 +243,33 @@ def transcribe():
         if not audio_base64:
             return jsonify({"error": "No audio", "text": ""})
 
-        # Decode audio
         audio_bytes = base64.b64decode(audio_base64)
 
-        # Try OpenAI Whisper first (best quality)
         if OPENAI_API_KEY:
-            # Save to temp file
             with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
                 f.write(audio_bytes)
                 temp_path = f.name
 
             try:
-                # Map language code to Whisper language
                 lang_map = {
-                    "en": "en", "zh-CN": "zh", "zh-TW": "zh", "yue-Hant-HK": "zh",
-                    "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th", "vi-VN": "vi",
-                    "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja"
+                    "en": "en",
+                    "en-SG": "en",
+                    "zh-CN": "zh",
+                    "zh-TW": "zh",
+                    "zh-HK": "zh",
+                    "yue-Hant-HK": "zh",
+                    "ms-MY": "ms",
+                    "ta-IN": "ta",
+                    "th-TH": "th",
+                    "vi-VN": "vi",
+                    "id-ID": "id",
+                    "ko-KR": "ko",
+                    "ja-JP": "ja"
                 }
-                whisper_lang = lang_map.get(language.split("-")[0] if "-" in language else language, "en")
-                # Handle full codes
+
+                whisper_lang = "en"
                 for code, wl in lang_map.items():
-                    if language.startswith(code.split("-")[0]):
+                    if language == code or language.startswith(code.split("-")[0]):
                         whisper_lang = wl
                         break
 
@@ -275,21 +282,23 @@ def transcribe():
                         timeout=30
                     )
                 result = resp.json()
-                import os
                 os.unlink(temp_path)
 
                 if "text" in result:
                     return jsonify({"text": result["text"]})
                 else:
-                    return jsonify({"error": result.get("error", {}).get("message", "Whisper error"), "text": ""})
+                    return jsonify({
+                        "error": result.get("error", {}).get("message", "Whisper error"),
+                        "text": ""
+                    })
+
             except Exception as e:
-                import os
-                try: os.unlink(temp_path)
-                except: pass
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
                 return jsonify({"error": str(e), "text": ""})
 
-        # No OpenAI key — use Claude to transcribe (send as description request)
-        # This is a fallback that works but less accurate
         return jsonify({
             "error": "Set OPENAI_API_KEY for voice in Chrome. Or use Safari browser.",
             "text": ""
@@ -353,7 +362,11 @@ def call_openai(system, messages):
     resp = requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"},
-        json={"model": "gpt-4o", "max_tokens": 300, "messages": [{"role": "system", "content": system}] + messages},
+        json={
+            "model": "gpt-4o",
+            "max_tokens": 300,
+            "messages": [{"role": "system", "content": system}] + messages
+        },
         timeout=30
     )
     data = resp.json()
@@ -367,7 +380,8 @@ def call_openai_vision(system, image_base64, prompt):
         "https://api.openai.com/v1/chat/completions",
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"},
         json={
-            "model": "gpt-4o", "max_tokens": 300,
+            "model": "gpt-4o",
+            "max_tokens": 300,
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": [
