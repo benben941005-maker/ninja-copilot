@@ -15,7 +15,6 @@
         ::-webkit-scrollbar-thumb{background:rgba(227,24,55,0.4);border-radius:2px}
         #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:500px;margin:0 auto;background:#0D0D1A}
 
-        /* Header */
         .hdr{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
         .hdr-l{display:flex;align-items:center;gap:8px}
         .hdr-logo{width:32px;height:32px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:16px}
@@ -23,22 +22,26 @@
         .hdr-t span{color:#E31837}
         .hdr-s{color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:1px}
 
-        /* Location bar - shows where driver is now */
+        /* Language bar */
+        .lang-bar{display:flex;gap:4px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;border-bottom:1px solid rgba(255,255,255,0.04)}
+        .lang-bar::-webkit-scrollbar{display:none}
+        .lang-btn{padding:4px 10px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all 0.2s}
+        .lang-btn.active{background:#E31837;color:#fff;border-color:#E31837}
+
+        /* Location bar */
         .loc-bar{padding:8px 14px;background:rgba(76,175,80,0.08);border-bottom:1px solid rgba(76,175,80,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px}
         .loc-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;box-shadow:0 0 6px #4CAF50;animation:pulse 2s infinite;flex-shrink:0}
-        .loc-bar .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
-        .loc-bar .loc-addr{color:#fff;font-size:12px;font-weight:600}
+        .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
+        .loc-addr{color:#fff;font-size:12px;font-weight:600}
         .loc-bar.no-gps{background:rgba(255,87,34,0.08);border-color:rgba(255,87,34,0.15)}
         .loc-bar.no-gps .loc-dot{background:#FF5722;box-shadow:0 0 6px #FF5722}
         .loc-bar.no-gps .loc-addr{color:#FF5722}
 
-        /* Quick chips */
-        .chips{display:flex;gap:5px;padding:8px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
+        .chips{display:flex;gap:5px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
         .chips::-webkit-scrollbar{display:none}
-        .chip{padding:5px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
+        .chip{padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
         .chip:active{background:rgba(255,255,255,0.1)}
 
-        /* Chat */
         .chat{flex:1;overflow-y:auto;padding:10px 10px 6px}
         .mr{display:flex;margin-bottom:8px}.mr.u{justify-content:flex-end}.mr.a{justify-content:flex-start}
         .av{width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px}
@@ -48,37 +51,38 @@
         .bb img{width:100%;max-height:120px;object-fit:contain;border-radius:8px;margin-bottom:6px;display:block}
         .proc{color:rgba(255,255,255,0.3);font-size:12px;padding:6px 40px}
 
-        /* Unit number card - BIG */
         .unit-card{background:linear-gradient(135deg,#E31837,#c41230);border-radius:14px;padding:16px;margin:8px 0;text-align:center}
         .unit-card .unit-label{color:rgba(255,255,255,0.7);font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:4px}
         .unit-card .unit-num{color:#fff;font-size:36px;font-weight:700;letter-spacing:2px}
         .unit-card .unit-addr{color:rgba(255,255,255,0.8);font-size:12px;margin-top:6px}
         .unit-card .unit-lang{display:inline-block;background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:8px;font-size:10px;color:rgba(255,255,255,0.7);margin-top:6px}
 
-        /* Auto-nav card */
         .anav{background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.3);border-radius:12px;padding:14px;margin:8px 0}
-        .anav .anav-title{color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
-        .anav .anav-title .anav-dot{width:6px;height:6px;border-radius:50%;background:#4CAF50;animation:pulse 1s infinite}
+        .anav-title{color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+        .anav-dot{width:6px;height:6px;border-radius:50%;background:#4CAF50;animation:pulse 1s infinite}
         .mf{border-radius:10px;overflow:hidden;margin-bottom:10px;border:2px solid #E31837}
         .mf iframe{display:block;border:0}
         .anav-btns{display:flex;gap:6px}
         .anav-btns button{flex:1;padding:10px 6px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
         .bg{background:#4285F4;color:#fff}
         .bw{background:#33CCFF;color:#000}
-        .ba{background:#fff;color:#000}
 
-        /* Speaking bar */
         .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
         .sb span{color:#E31837;font-size:11px;font-weight:600}
         .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
 
-        /* Mic active bar */
+        /* iOS big tap button — shows after AI speaks */
+        .ios-tap{display:none;padding:12px 14px;flex-shrink:0;border-top:1px solid rgba(227,24,55,0.15)}
+        .ios-tap.show{display:block}
+        .ios-tap button{width:100%;padding:20px;border-radius:14px;border:none;background:#E31837;color:#fff;font-size:18px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;animation:glow 1.5s infinite}
+        .ios-tap .ios-hint{color:rgba(255,255,255,0.3);font-size:10px;text-align:center;margin-top:6px}
+
+        /* Mic bar */
         .mic-bar{padding:6px 14px;display:none;align-items:center;justify-content:center;gap:8px;background:rgba(227,24,55,0.06);border-top:1px solid rgba(227,24,55,0.1)}
         .mic-bar.on{display:flex}
         .mic-pulse{width:8px;height:8px;border-radius:50%;background:#E31837;animation:pulse 1s infinite}
         .mic-bar span{color:#E31837;font-size:11px;font-weight:600}
 
-        /* Input bar */
         .ib{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);flex-shrink:0}
         .ir{display:flex;gap:6px;align-items:center;margin-bottom:8px}
         .ir input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
@@ -101,36 +105,28 @@
 </head>
 <body>
 <div id="app">
-    <!-- Header -->
     <div class="hdr">
         <div class="hdr-l">
             <div class="hdr-logo">🥷</div>
             <div><div class="hdr-t"><span>NINJA</span> CO-PILOT</div><div class="hdr-s">AI SENIOR DRIVER ASSISTANT</div></div>
         </div>
     </div>
-
-    <!-- Current location bar -->
+    <div class="lang-bar" id="langBar"></div>
     <div class="loc-bar no-gps" id="locBar">
         <div class="loc-dot"></div>
-        <div>
-            <div class="loc-label">YOUR LOCATION</div>
-            <div class="loc-addr" id="locAddr">Locating...</div>
-        </div>
+        <div><div class="loc-label">YOUR LOCATION</div><div class="loc-addr" id="locAddr">Locating...</div></div>
     </div>
-
-    <!-- Chips -->
     <div class="chips" id="chips"></div>
-
-    <!-- Chat -->
     <div class="chat" id="chat"></div>
-
-    <!-- Speaking bar -->
     <div class="sb" id="sb"><span>🔊 Speaking...</span><button id="stopBtn">Stop</button></div>
 
-    <!-- Mic always-on bar -->
-    <div class="mic-bar" id="micBar"><div class="mic-pulse"></div><span>HANDS-FREE MIC ACTIVE</span></div>
+    <!-- iOS: big tap button after AI speaks -->
+    <div class="ios-tap" id="iosTap">
+        <button id="iosTapBtn">🎙️ TAP TO SPEAK AGAIN</button>
+        <div class="ios-hint">iPhone requires tap each time to listen</div>
+    </div>
 
-    <!-- Input bar -->
+    <div class="mic-bar" id="micBar"><div class="mic-pulse"></div><span id="micLabel">HANDS-FREE MIC ACTIVE</span></div>
     <div class="ib">
         <div class="ir">
             <input type="text" id="inp" placeholder="Type or speak in any language...">
