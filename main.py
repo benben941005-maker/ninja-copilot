@@ -2,7 +2,7 @@ import os
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder=".", static_url_path="")
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
@@ -12,13 +12,12 @@ AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    return send_from_directory("static", "index.html")
 
 
 @app.route("/<path:path>")
 def static_files(path):
-    return send_from_directory(".", path)
-
+    return send_from_directory("static", path)
 
 # =========================================================
 # REVERSE GEOCODE
