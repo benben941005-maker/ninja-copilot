@@ -20,6 +20,54 @@ def static_files(path):
     return send_from_directory("static", path)
 
 
+@app.route("/api/geocode")
+def geocode():
+    """Reverse geocode GPS coordinates to street address."""
+    try:
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
+
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={
+                "lat": lat, "lon": lng,
+                "format": "json", "addressdetails": 1, "zoom": 18
+            },
+            headers={"User-Agent": "NinjaCoPilot/1.0"},
+            timeout=5
+        )
+        data = resp.json()
+
+        # Build readable address from components
+        addr = data.get("address", {})
+        parts = []
+        # Road / street name
+        road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") or ""
+        if road:
+            house = addr.get("house_number", "")
+            parts.append((house + " " + road).strip())
+        # Neighborhood / suburb
+        area = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
+        if area:
+            parts.append(area)
+        # City
+        city = addr.get("city") or addr.get("town") or addr.get("village") or ""
+        if city:
+            parts.append(city)
+        # Postal code
+        postcode = addr.get("postcode", "")
+        if postcode:
+            parts.append(postcode)
+
+        address = ", ".join(parts) if parts else data.get("display_name", str(lat) + "," + str(lng))
+        return jsonify({"address": address, "raw": addr})
+
+    except Exception as e:
+        return jsonify({"address": None, "error": str(e)})
+
+
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:

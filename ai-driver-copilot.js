@@ -1,24 +1,23 @@
 // ═══════════════════════════════════════════════════════════
 //  NINJA CO-PILOT — AI Driver Assistant
-//  Vanilla JS, no React, no build step
+//  Auto-locate driver → Scan label → Show unit → Auto-navigate
 // ═══════════════════════════════════════════════════════════
 
 (function () {
     "use strict";
 
-    // ─── Config ───
     var MAX_DIM = 800;
     var MAX_BYTES = 4 * 1024 * 1024;
 
     // ─── State ───
     var busy = false;
     var scannedAddr = null;
-    var navSteps = [];
-    var navStep = 0;
     var isSpeaking = false;
+    var micActive = false;
     var isListening = false;
     var recognition = null;
     var gpsPos = null;
+    var currentStreet = null;
 
     // ─── DOM ───
     var chatEl = document.getElementById("chat");
@@ -29,47 +28,38 @@
     var photoBtn = document.getElementById("photoBtn");
     var navBtnEl = document.getElementById("navBtn");
     var stopBtnEl = document.getElementById("stopBtn");
-    var micToggle = document.getElementById("micToggle");
     var sbEl = document.getElementById("sb");
-    var gpsEl = document.getElementById("gps");
+    var micBar = document.getElementById("micBar");
+    var locBar = document.getElementById("locBar");
+    var locAddr = document.getElementById("locAddr");
     var chipsEl = document.getElementById("chips");
     var cameraIn = document.getElementById("cameraIn");
     var photoIn = document.getElementById("photoIn");
-    var alwaysOnMic = false;
 
     // ─── Prompts ───
     var SYS = [
         "You are Ninja Co-Pilot, an AI assistant for delivery drivers.",
-        "",
         "STRICT RULES:",
-        "1. ALL replies must be under 60 words. Maximum 3 bullet points.",
-        '2. Professional tone only. NEVER use: "bro", "hey", "dude", "mate", slang, or casual greetings.',
-        "3. Start with the action or answer directly. No greetings, no filler.",
-        "4. Use this format:",
-        "   \u2022 Action: [what to do immediately]",
-        "   \u2022 Reason: [one sentence why, if needed]",
-        "5. For issues, give solution first, explanation second.",
-        "6. Auto-detect any language on labels without asking.",
-        "",
-        "EXAMPLE good reply:",
-        "\u2022 Action: Leave parcel at door, take photo as proof.",
-        '\u2022 Note: Mark as "safe location" in the app.',
-        "",
-        "EXAMPLE bad reply (NEVER do this):",
-        '"Hey bro! So what you wanna do is..."'
+        "1. ALL replies under 60 words. Max 3 bullet points.",
+        '2. Professional tone. NEVER: "bro", "hey", "dude", slang.',
+        "3. Start with action directly. No greetings.",
+        "4. Format: \u2022 Action: [what to do] \u2022 Note: [context]",
+        "5. Solution first, explanation second.",
+        "6. Auto-detect any language."
     ].join("\n");
 
     var OCR = [
-        "Extract delivery address from this package label.",
-        "Auto-detect the language (English, Chinese, Malay, Tamil, Thai, Vietnamese, Bahasa, etc.).",
+        "Extract ALL delivery info from this package label.",
+        "Auto-detect the language.",
+        "IMPORTANT: Extract the unit/floor/block number separately if visible (e.g. #12-345, Blk 123, Unit 5, Apt 3B, etc).",
         "Respond ONLY in JSON:",
-        '{"address":"full address","postal":"code or null","recipient":"name or null","sender":"sender or null","language":"auto-detected language","confidence":"high/medium/low"}'
+        '{"address":"full street address","unit":"unit/floor/block number or null","postal":"postal code or null","recipient":"name or null","sender":"sender address or null","language":"detected language","confidence":"high/medium/low"}'
     ].join("\n");
 
     var CHIPS = ["Cannot find address", "No answer", "Traffic jam", "Damaged parcel", "Wrong address", "Gate locked"];
 
     // ═══════════════════════════════════════════════════════
-    //  IMAGE COMPRESSION — guarantees under 4MB
+    //  IMAGE COMPRESSION
     // ═══════════════════════════════════════════════════════
     function compressImage(file, cb) {
         var reader = new FileReader();
@@ -79,35 +69,19 @@
                 var w = img.width, h = img.height;
                 if (w > MAX_DIM || h > MAX_DIM) {
                     var r = Math.min(MAX_DIM / w, MAX_DIM / h);
-                    w = Math.round(w * r);
-                    h = Math.round(h * r);
+                    w = Math.round(w * r); h = Math.round(h * r);
                 }
                 var c = document.createElement("canvas");
-                c.width = w;
-                c.height = h;
+                c.width = w; c.height = h;
                 c.getContext("2d").drawImage(img, 0, 0, w, h);
-
-                var q = 0.8;
-                var b64 = c.toDataURL("image/jpeg", q);
-                while (b64.length * 0.75 > MAX_BYTES && q > 0.2) {
-                    q -= 0.1;
-                    b64 = c.toDataURL("image/jpeg", q);
-                }
+                var q = 0.8, b64 = c.toDataURL("image/jpeg", q);
+                while (b64.length * 0.75 > MAX_BYTES && q > 0.2) { q -= 0.1; b64 = c.toDataURL("image/jpeg", q); }
                 if (b64.length * 0.75 > MAX_BYTES) {
-                    c.width = Math.round(w * 0.5);
-                    c.height = Math.round(h * 0.5);
+                    c.width = Math.round(w * 0.5); c.height = Math.round(h * 0.5);
                     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-                    b64 = c.toDataURL("image/jpeg", 0.5);
-                    w = c.width;
-                    h = c.height;
+                    b64 = c.toDataURL("image/jpeg", 0.5); w = c.width; h = c.height;
                 }
-                cb(null, {
-                    base64: b64.split(",")[1],
-                    preview: b64,
-                    w: w,
-                    h: h,
-                    kb: Math.round((b64.length * 3) / 4 / 1024)
-                });
+                cb(null, { base64: b64.split(",")[1], preview: b64, w: w, h: h, kb: Math.round((b64.length * 3) / 4 / 1024) });
             };
             img.onerror = function () { cb("Failed to load image"); };
             img.src = e.target.result;
@@ -117,88 +91,110 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    //  API CALLS (go through Python backend)
+    //  API
     // ═══════════════════════════════════════════════════════
     function apiChat(text, cb) {
         fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                system: SYS,
-                messages: [{ role: "user", content: text }]
-            })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.error) cb(typeof d.error === "string" ? d.error : JSON.stringify(d.error));
-                else cb(null, d.reply || "");
-            })
-            .catch(function (e) { cb(e.message); });
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ system: SYS, messages: [{ role: "user", content: text }] })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.error) cb(typeof d.error === "string" ? d.error : JSON.stringify(d.error));
+            else cb(null, d.reply || "");
+        }).catch(function (e) { cb(e.message); });
     }
 
     function apiScan(base64, cb) {
         fetch("/api/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                system: SYS,
-                image_base64: base64,
-                ocr_prompt: OCR
-            })
-        })
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ system: SYS, image_base64: base64, ocr_prompt: OCR })
+        }).then(function (r) { return r.json(); }).then(function (d) {
+            if (d.error) cb(typeof d.error === "string" ? d.error : JSON.stringify(d.error));
+            else cb(null, d.reply || "");
+        }).catch(function (e) { cb(e.message); });
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  GPS — Auto-locate driver + reverse geocode
+    // ═══════════════════════════════════════════════════════
+    function initGPS() {
+        if (!navigator.geolocation) {
+            locAddr.textContent = "GPS not available";
+            return;
+        }
+        navigator.geolocation.watchPosition(
+            function (p) {
+                gpsPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
+                locBar.classList.remove("no-gps");
+                // Reverse geocode to get street name
+                reverseGeocode(gpsPos.lat, gpsPos.lng);
+            },
+            function () {
+                locBar.classList.add("no-gps");
+                locAddr.textContent = "GPS searching...";
+            },
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+        );
+    }
+
+    // Use backend to reverse geocode (avoids CORS issues)
+    function reverseGeocode(lat, lng) {
+        fetch("/api/geocode?lat=" + lat + "&lng=" + lng)
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                if (d.error) cb(typeof d.error === "string" ? d.error : JSON.stringify(d.error));
-                else cb(null, d.reply || "");
+                if (d.address) {
+                    currentStreet = d.address;
+                    locAddr.textContent = d.address;
+                } else {
+                    locAddr.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+                }
             })
-            .catch(function (e) { cb(e.message); });
+            .catch(function () {
+                locAddr.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+            });
     }
 
     // ═══════════════════════════════════════════════════════
     //  TEXT-TO-SPEECH
     // ═══════════════════════════════════════════════════════
-    function speak(text) {
-        if (!window.speechSynthesis) return;
+    function speak(text, onDone) {
+        if (!window.speechSynthesis) { if (onDone) onDone(); return; }
         window.speechSynthesis.cancel();
         var u = new SpeechSynthesisUtterance(text);
         u.rate = 0.95;
-        u.onstart = function () {
-            isSpeaking = true;
-            sbEl.style.display = "flex";
-        };
-        u.onend = function () {
-            isSpeaking = false;
-            sbEl.style.display = "none";
-        };
+        u.onstart = function () { isSpeaking = true; sbEl.style.display = "flex"; };
+        u.onend = function () { isSpeaking = false; sbEl.style.display = "none"; if (onDone) onDone(); };
         window.speechSynthesis.speak(u);
     }
 
     function stopSpeak() {
         if (window.speechSynthesis) window.speechSynthesis.cancel();
-        isSpeaking = false;
-        sbEl.style.display = "none";
+        isSpeaking = false; sbEl.style.display = "none";
     }
 
     // ═══════════════════════════════════════════════════════
-    //  SPEECH-TO-TEXT (auto language detect)
+    //  ALWAYS-ON MIC — tap once ON, tap again OFF
     // ═══════════════════════════════════════════════════════
-    function toggleListen() {
-        if (isListening) {
+    function toggleMic() {
+        if (micActive) {
+            micActive = false; isListening = false;
             if (recognition) recognition.stop();
-            isListening = false;
-            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
-            voiceBtn.classList.remove("lis");
+            voiceBtn.classList.remove("active");
+            voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
+            micBar.classList.remove("on");
             return;
         }
+        micActive = true;
+        voiceBtn.classList.add("active");
+        voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
+        micBar.classList.add("on");
         startListening();
     }
 
     function startListening() {
+        if (!micActive || isListening || isSpeaking) return;
         var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) {
-            alert("Speech recognition not supported in this browser");
-            return;
-        }
+        if (!SR) { alert("Speech not supported"); micActive = false; return; }
+
         recognition = new SR();
         recognition.continuous = false;
         recognition.interimResults = false;
@@ -206,112 +202,136 @@
 
         recognition.onresult = function (e) {
             var text = e.results[0][0].transcript;
-            inp.value = text;
             isListening = false;
-            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
-            voiceBtn.classList.remove("lis");
-            updateSend();
-
-            // If always-on mic, auto-send and restart listening
-            if (alwaysOnMic && text.trim()) {
-                sendText(text.trim());
-                setTimeout(function () {
-                    if (alwaysOnMic && !busy) startListening();
-                }, 1000);
-            }
+            if (text.trim()) sendText(text.trim());
+            else restartMic(500);
         };
-        recognition.onerror = function () {
+        recognition.onerror = function (e) {
             isListening = false;
-            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
-            voiceBtn.classList.remove("lis");
-            // Restart if always-on
-            if (alwaysOnMic) {
-                setTimeout(function () { if (alwaysOnMic) startListening(); }, 1000);
-            }
+            restartMic(e.error === "no-speech" ? 300 : 2000);
         };
         recognition.onend = function () {
             isListening = false;
-            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
-            voiceBtn.classList.remove("lis");
-            // Restart if always-on
-            if (alwaysOnMic && !busy) {
-                setTimeout(function () { if (alwaysOnMic) startListening(); }, 500);
-            }
+            if (micActive && !busy && !isSpeaking) restartMic(300);
         };
-        recognition.start();
-        isListening = true;
-        voiceBtn.textContent = "\ud83c\udfa4 LISTENING...";
-        voiceBtn.classList.add("lis");
+        try { recognition.start(); isListening = true; }
+        catch (e) { restartMic(500); }
     }
 
-    function toggleAlwaysOnMic() {
-        alwaysOnMic = !alwaysOnMic;
-        micToggle.classList.toggle("on", alwaysOnMic);
-        if (alwaysOnMic) {
-            startListening();
+    function restartMic(delay) {
+        if (!micActive) return;
+        setTimeout(function () {
+            if (micActive && !busy && !isSpeaking && !isListening) startListening();
+        }, delay || 500);
+    }
+
+    // ═══════════════════════════════════════════════════════
+    //  NAVIGATION — auto-open maps from GPS to destination
+    // ═══════════════════════════════════════════════════════
+    function autoNavigate(dest) {
+        var origin = gpsPos ? gpsPos.lat + "," + gpsPos.lng : "";
+        // Try to detect mobile for native app deep links
+        var ua = navigator.userAgent.toLowerCase();
+        var isIOS = /iphone|ipad/.test(ua);
+        var isAndroid = /android/.test(ua);
+
+        if (isAndroid) {
+            // Try Google Maps app first
+            window.location.href = "google.navigation:q=" + encodeURIComponent(dest) + "&mode=d";
+        } else if (isIOS) {
+            // Try Apple Maps
+            window.location.href = "maps://?daddr=" + encodeURIComponent(dest) + "&dirflg=d";
         } else {
-            if (recognition) recognition.stop();
-            isListening = false;
-            voiceBtn.textContent = "\ud83c\udfa4 TAP TO SPEAK";
-            voiceBtn.classList.remove("lis");
+            // Desktop fallback
+            var url = "https://www.google.com/maps/dir/?api=1"
+                + (origin ? "&origin=" + origin : "")
+                + "&destination=" + encodeURIComponent(dest)
+                + "&travelmode=driving";
+            window.open(url, "_blank");
         }
     }
 
+    function openGoogleMaps(dest) {
+        var origin = gpsPos ? gpsPos.lat + "," + gpsPos.lng : "";
+        window.open("https://www.google.com/maps/dir/?api=1" + (origin ? "&origin=" + origin : "") + "&destination=" + encodeURIComponent(dest) + "&travelmode=driving", "_blank");
+    }
+    function openWaze(dest) {
+        window.open("https://waze.com/ul?q=" + encodeURIComponent(dest) + "&navigate=yes", "_blank");
+    }
+
     // ═══════════════════════════════════════════════════════
-    //  GPS
+    //  SHOW UNIT NUMBER BIG + MAP + AUTO-NAVIGATE
     // ═══════════════════════════════════════════════════════
-    function initGPS() {
-        if (!navigator.geolocation) {
-            setGPS(false, "No GPS");
-            return;
+    function showDeliveryCard(parsed) {
+        removeEl("deliveryCard");
+
+        var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
+        var mapSrc = "";
+        if (gpsPos) {
+            mapSrc = "https://maps.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng
+                + "&daddr=" + encodeURIComponent(fullAddr) + "&output=embed";
+        } else {
+            mapSrc = "https://maps.google.com/maps?q=" + encodeURIComponent(fullAddr) + "&z=16&output=embed";
         }
-        navigator.geolocation.watchPosition(
-            function (p) {
-                gpsPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: p.coords.accuracy };
-                setGPS(true, "GPS \u00b1" + Math.round(gpsPos.acc) + "m");
-            },
-            function () {
-                setGPS(false, "GPS...");
-            },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-        );
-    }
 
-    function setGPS(ok, label) {
-        var color = ok ? "#4CAF50" : "#FF5722";
-        gpsEl.style.background = ok ? "rgba(76,175,80,0.1)" : "rgba(255,87,34,0.1)";
-        gpsEl.innerHTML =
-            '<div class="gps-dot" style="background:' + color + ";box-shadow:0 0 4px " + color + '"></div>' +
-            '<span style="color:' + color + '">' + label + "</span>";
-    }
+        var div = document.createElement("div");
+        div.id = "deliveryCard";
 
-    // ═══════════════════════════════════════════════════════
-    //  NAV STEPS
-    // ═══════════════════════════════════════════════════════
-    function makeNav(addr) {
-        return [
-            { icon: "\ud83d\ude80", text: "Starting: " + addr, dist: "" },
-            { icon: "\u2b06\ufe0f", text: "Head north 200m", dist: "200m" },
-            { icon: "\u27a1\ufe0f", text: "Turn right at junction", dist: "150m" },
-            { icon: "\u2b06\ufe0f", text: "Straight 500m", dist: "500m" },
-            { icon: "\u2b05\ufe0f", text: "Turn left, main road", dist: "300m" },
-            { icon: "\u27a1\ufe0f", text: "Turn right, delivery area", dist: "100m" },
-            { icon: "\ud83d\udce6", text: "Arrived: " + addr, dist: "\u2713" }
-        ];
+        // Build HTML
+        var html = "";
+
+        // UNIT NUMBER — BIG
+        if (parsed.unit) {
+            html += '<div class="unit-card">'
+                + '<div class="unit-label">UNIT / BLOCK NUMBER</div>'
+                + '<div class="unit-num">' + esc(parsed.unit) + '</div>'
+                + '<div class="unit-addr">' + esc(parsed.address) + '</div>';
+            if (parsed.language) {
+                html += '<div class="unit-lang">\ud83c\udf10 ' + esc(parsed.language) + ' (auto-detected)</div>';
+            }
+            html += '</div>';
+        }
+
+        // If no unit extracted, show address prominently
+        if (!parsed.unit) {
+            html += '<div class="unit-card">'
+                + '<div class="unit-label">DELIVERY ADDRESS</div>'
+                + '<div class="unit-num" style="font-size:20px">' + esc(parsed.address) + '</div>';
+            if (parsed.postal) html += '<div class="unit-addr">\ud83d\udcee ' + esc(parsed.postal) + '</div>';
+            if (parsed.language) html += '<div class="unit-lang">\ud83c\udf10 ' + esc(parsed.language) + '</div>';
+            html += '</div>';
+        }
+
+        // Recipient
+        if (parsed.recipient) {
+            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">\ud83d\udc64 ' + esc(parsed.recipient) + '</div>';
+        }
+
+        // Auto-navigating card
+        html += '<div class="anav">'
+            + '<div class="anav-title"><div class="anav-dot"></div>AUTO-NAVIGATING FROM YOUR LOCATION</div>'
+            + '<div class="mf"><iframe src="' + mapSrc + '" width="100%" height="180" allowfullscreen loading="lazy"></iframe></div>'
+            + '<div class="anav-btns">'
+            + '<button class="bg" id="navG">\ud83d\uddfa Google Maps</button>'
+            + '<button class="bw" id="navW">\ud83d\udea6 Waze</button>'
+            + '</div>'
+            + '</div>';
+
+        div.innerHTML = html;
+        chatEl.appendChild(div);
+        scrollDown();
+
+        // Wire nav buttons (manual re-open)
+        document.getElementById("navG").addEventListener("click", function () { openGoogleMaps(fullAddr); });
+        document.getElementById("navW").addEventListener("click", function () { openWaze(fullAddr); });
     }
 
     // ═══════════════════════════════════════════════════════
     //  RENDER HELPERS
     // ═══════════════════════════════════════════════════════
-    function esc(s) {
-        var d = document.createElement("div");
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    function scrollDown() {
-        chatEl.scrollTop = chatEl.scrollHeight;
-    }
+    function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+    function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
+    function removeEl(id) { var el = document.getElementById(id); if (el) el.remove(); }
 
     function addBubble(role, text, imgUrl) {
         var row = document.createElement("div");
@@ -327,94 +347,11 @@
     }
 
     function showProc() {
-        var el = document.createElement("div");
-        el.id = "proc";
-        el.className = "proc";
-        el.textContent = "Processing...";
-        chatEl.appendChild(el);
-        scrollDown();
+        var el = document.createElement("div"); el.id = "proc"; el.className = "proc";
+        el.textContent = "Processing..."; chatEl.appendChild(el); scrollDown();
     }
-
-    function hideProc() {
-        var el = document.getElementById("proc");
-        if (el) el.remove();
-    }
-
-    function updateSend() {
-        if (inp.value.trim()) sendBtn.classList.add("on");
-        else sendBtn.classList.remove("on");
-    }
-
-    // ═══════════════════════════════════════════════════════
-    //  NAV UI
-    // ═══════════════════════════════════════════════════════
-    function showNavBtn() {
-        removeEl("navInline");
-        var btn = document.createElement("button");
-        btn.id = "navInline";
-        btn.className = "nbtn";
-        btn.textContent = "\ud83d\uddfa\ufe0f Navigate to Address";
-        btn.addEventListener("click", startNav);
-        chatEl.appendChild(btn);
-        scrollDown();
-        navBtnEl.style.display = "flex";
-    }
-
-    function startNav() {
-        if (!scannedAddr || !navSteps.length) return;
-        navStep = 0;
-        renderNav();
-        speak(navSteps[0].text);
-    }
-
-    function renderNav() {
-        removeEl("navPanel");
-        removeEl("navInline");
-
-        var s = navSteps[navStep];
-        var pct = ((navStep + 1) / navSteps.length * 100).toFixed(0);
-
-        var div = document.createElement("div");
-        div.id = "navPanel";
-        div.innerHTML =
-            '<div class="mf"><iframe src="https://maps.google.com/maps?q=' +
-            encodeURIComponent(scannedAddr) +
-            '&z=16&output=embed" width="100%" height="200" allowfullscreen loading="lazy"></iframe></div>' +
-            '<div class="np">' +
-            '<div class="nh"><span class="ns">STEP ' + (navStep + 1) + "/" + navSteps.length + '</span><span class="nd">' + s.dist + "</span></div>" +
-            '<div class="ni"><span class="ni-i">' + s.icon + '</span><span class="ni-t">' + esc(s.text) + "</span></div>" +
-            '<div class="npg"><div class="npf" style="width:' + pct + '%"></div></div>' +
-            '<div class="nbs">' +
-            '<button class="bk' + (navStep === 0 ? " dis" : "") + '" id="nprev">\u2190</button>' +
-            '<button class="spk' + (isSpeaking ? " on" : "") + '" id="nspk">' + (isSpeaking ? "\ud83d\udd0a Stop" : "\ud83d\udd0a Speak") + "</button>" +
-            '<button class="nx' + (navStep === navSteps.length - 1 ? " dis" : "") + '" id="nnext">\u2192</button>' +
-            "</div></div>" +
-            '<button class="cn" id="nclose">Close Navigation</button>';
-
-        chatEl.appendChild(div);
-        scrollDown();
-
-        document.getElementById("nprev").addEventListener("click", function () {
-            if (navStep > 0) { navStep--; renderNav(); speak(navSteps[navStep].text); }
-        });
-        document.getElementById("nnext").addEventListener("click", function () {
-            if (navStep < navSteps.length - 1) { navStep++; renderNav(); speak(navSteps[navStep].text); }
-        });
-        document.getElementById("nspk").addEventListener("click", function () {
-            if (isSpeaking) stopSpeak();
-            else speak(navSteps[navStep].text);
-            setTimeout(renderNav, 150);
-        });
-        document.getElementById("nclose").addEventListener("click", function () {
-            removeEl("navPanel");
-            showNavBtn();
-        });
-    }
-
-    function removeEl(id) {
-        var el = document.getElementById(id);
-        if (el) el.remove();
-    }
+    function hideProc() { removeEl("proc"); }
+    function updateSend() { sendBtn.classList.toggle("on", !!inp.value.trim()); }
 
     // ═══════════════════════════════════════════════════════
     //  SEND TEXT
@@ -423,24 +360,21 @@
         var text = overrideText || inp.value;
         if (!text || !text.trim() || busy) return;
         addBubble("user", text.trim());
-        inp.value = "";
-        updateSend();
-        busy = true;
-        showProc();
+        inp.value = ""; updateSend();
+        busy = true; showProc();
 
         apiChat(text.trim(), function (err, reply) {
-            hideProc();
-            if (err) addBubble("assistant", "Error: " + err);
+            hideProc(); busy = false;
+            if (err) { addBubble("assistant", "Error: " + err); restartMic(1000); }
             else {
                 addBubble("assistant", reply);
-                speak(reply.replace(/[\u2022\-\*]/g, "").replace(/\n+/g, ". "));
+                speak(reply.replace(/[\u2022\-\*]/g, "").replace(/\n+/g, ". "), function () { restartMic(500); });
             }
-            busy = false;
         });
     }
 
     // ═══════════════════════════════════════════════════════
-    //  SCAN LABEL
+    //  SCAN LABEL — extract unit → show big → auto-navigate
     // ═══════════════════════════════════════════════════════
     function handleScan(fileInput) {
         var file = fileInput.files && fileInput.files[0];
@@ -448,51 +382,37 @@
         busy = true;
 
         compressImage(file, function (err, img) {
-            if (err) {
-                addBubble("assistant", "Error: " + err);
-                busy = false;
-                return;
-            }
+            if (err) { addBubble("assistant", "Error: " + err); busy = false; return; }
             addBubble("user", "\ud83d\udcf7 Scanned (" + img.w + "\u00d7" + img.h + ", " + img.kb + "KB)", img.preview);
             showProc();
 
             apiScan(img.base64, function (err2, reply) {
-                hideProc();
-                if (err2) {
-                    addBubble("assistant", "Error: " + err2);
-                    busy = false;
-                    fileInput.value = "";
-                    return;
-                }
+                hideProc(); busy = false; fileInput.value = "";
+                if (err2) { addBubble("assistant", "Error: " + err2); restartMic(1000); return; }
 
                 var parsed = null;
-                try {
-                    parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
-                } catch (e) { /* not json */ }
+                try { parsed = JSON.parse(reply.replace(/```json|```/g, "").trim()); } catch (e) {}
 
                 if (parsed && parsed.address) {
-                    var lines = [
-                        "\ud83d\udccd " + parsed.address,
-                        parsed.postal ? "\ud83d\udcee Postal: " + parsed.postal : null,
-                        parsed.recipient ? "\ud83d\udc64 " + parsed.recipient : null,
-                        "\ud83c\udf10 " + (parsed.language || "Unknown") + " (auto-detected)"
-                    ].filter(Boolean).join("\n");
+                    var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
+                    scannedAddr = fullAddr;
 
-                    addBubble("assistant", lines);
-                    scannedAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
-                    navSteps = makeNav(parsed.address);
-                    navStep = 0;
-                    showNavBtn();
-                    speak("Address: " + parsed.address + ". Tap navigate to start.");
+                    // Show unit number BIG + map
+                    showDeliveryCard(parsed);
+
+                    // Voice announce + auto-open navigation
+                    var voiceMsg = parsed.unit
+                        ? "Unit " + parsed.unit + ". " + parsed.address + ". Opening navigation."
+                        : parsed.address + ". Opening navigation.";
+
+                    speak(voiceMsg, function () {
+                        // Auto-open maps navigation after speaking
+                        autoNavigate(fullAddr);
+                        restartMic(3000);
+                    });
                 } else {
                     addBubble("assistant", reply);
-                }
-                busy = false;
-                fileInput.value = "";
-
-                // Resume always-on mic after scan
-                if (alwaysOnMic) {
-                    setTimeout(function () { if (alwaysOnMic && !busy) startListening(); }, 1000);
+                    restartMic(1000);
                 }
             });
         });
@@ -501,35 +421,27 @@
     // ═══════════════════════════════════════════════════════
     //  INIT
     // ═══════════════════════════════════════════════════════
-    function init() {
-        // Render chips
-        CHIPS.forEach(function (c) {
-            var btn = document.createElement("button");
-            btn.className = "chip";
-            btn.textContent = c;
-            btn.addEventListener("click", function () { sendText(c); });
-            chipsEl.appendChild(btn);
-        });
+    CHIPS.forEach(function (c) {
+        var btn = document.createElement("button");
+        btn.className = "chip"; btn.textContent = c;
+        btn.addEventListener("click", function () { sendText(c); });
+        chipsEl.appendChild(btn);
+    });
 
-        // Wire up events
-        sendBtn.addEventListener("click", function () { sendText(); });
-        inp.addEventListener("input", updateSend);
-        inp.addEventListener("keydown", function (e) { if (e.key === "Enter") sendText(); });
-        voiceBtn.addEventListener("click", toggleListen);
-        scanBtn.addEventListener("click", function () { cameraIn.click(); });
-        photoBtn.addEventListener("click", function () { photoIn.click(); });
-        cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-        photoIn.addEventListener("change", function () { handleScan(photoIn); });
-        navBtnEl.addEventListener("click", startNav);
-        stopBtnEl.addEventListener("click", stopSpeak);
-        micToggle.addEventListener("click", toggleAlwaysOnMic);
+    sendBtn.addEventListener("click", function () { sendText(); });
+    inp.addEventListener("input", updateSend);
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") sendText(); });
+    voiceBtn.addEventListener("click", toggleMic);
+    scanBtn.addEventListener("click", function () { cameraIn.click(); });
+    photoBtn.addEventListener("click", function () { photoIn.click(); });
+    cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
+    photoIn.addEventListener("change", function () { handleScan(photoIn); });
+    navBtnEl.addEventListener("click", function () {
+        if (scannedAddr) autoNavigate(scannedAddr);
+    });
+    stopBtnEl.addEventListener("click", stopSpeak);
 
-        // Start GPS
-        initGPS();
+    initGPS();
+    addBubble("assistant", "Ready. Tap \ud83c\udfa4 once for hands-free. Scan a label \u2014 I\u2019ll show the unit and auto-navigate you there.");
 
-        // Welcome message
-        addBubble("assistant", "Ready. Scan a label or ask a question.");
-    }
-
-    init();
 })();
