@@ -2,6 +2,7 @@
 //  NINJA CO-PILOT — iPhone safer voice version
 //  Safari/desktop: SpeechRecognition
 //  Chrome iOS: MediaRecorder → backend transcribe
+//  Cantonese strengthened
 // ═══════════════════════════════════════════════════════════
 
 (function () {
@@ -38,6 +39,13 @@
     var voicesReady = false;
     var speechUnlocked = false;
 
+    // live route
+    var activeRoute = null;
+    var activeStepIndex = 0;
+    var lastSpokenStep = -1;
+    var navActive = false;
+    var lastGpsCheckAt = 0;
+
     // DOM
     var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
     var sendBtn = document.getElementById("sendBtn"), voiceBtn = document.getElementById("voiceBtn");
@@ -49,14 +57,31 @@
     var langBar = document.getElementById("langBar"), chipsEl = document.getElementById("chips");
     var cameraIn = document.getElementById("cameraIn"), photoIn = document.getElementById("photoIn");
 
+    function currentLang() {
+        return LANGUAGES[selectedLang];
+    }
+
+    function isCantoneseMode() {
+        return currentLang().ai === "Cantonese";
+    }
+
     function getSysPrompt() {
-        var lang = LANGUAGES[selectedLang];
+        var lang = currentLang();
         var locInfo = currentStreet
             ? "\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")
             : "";
 
-        var replyRule = lang.ai === "Cantonese"
-            ? "LANGUAGE: Reply ONLY in Cantonese Chinese using Traditional Chinese characters. Do not reply in Mandarin. Keep wording natural for Hong Kong Cantonese speakers."
+        var replyRule = isCantoneseMode()
+            ? [
+                "IMPORTANT: Reply ONLY in Cantonese.",
+                "Use Hong Kong Cantonese grammar and wording.",
+                "Use Traditional Chinese characters.",
+                "Never reply in Mandarin.",
+                "Never reply in standard written Chinese.",
+                "Sound like a helpful Hong Kong / Singapore Cantonese-speaking driver assistant.",
+                "Prefer common Cantonese words like: 喺, 嘅, 去, 最近, 前面, 左轉, 右轉, 呢度, 附近, 而家, 直行, 落車, 到咗.",
+                "Keep reply short and natural."
+            ].join(" ")
             : "LANGUAGE: Reply ONLY in " + lang.ai + ".";
 
         return [
@@ -90,6 +115,71 @@
     }
 
     var CHIPS = ["Cannot find address", "No answer", "Traffic jam", "Damaged parcel", "Nearest petrol station", "Nearest toilet"];
+
+    // ═══════════════════════════════════════════════════════
+    //  CANTONESE TUNING
+    // ═══════════════════════════════════════════════════════
+    function normalizeCantoneseText(text) {
+        var t = String(text || "").trim();
+        if (!t) return t;
+
+        // simple phrase shaping to sound more Cantonese
+        var replacements = [
+            [/最近的/g, "最近嘅"],
+            [/附近的/g, "附近嘅"],
+            [/您的/g, "你嘅"],
+            [/你的/g, "你嘅"],
+            [/当前位置/g, "而家位置"],
+            [/当前的位置/g, "而家位置"],
+            [/当前位置是/g, "而家位置喺"],
+            [/当前位置在/g, "而家位置喺"],
+            [/位于/g, "喺"],
+            [/在这里/g, "喺呢度"],
+            [/在那边/g, "喺嗰边"],
+            [/在前面/g, "喺前面"],
+            [/在附近/g, "喺附近"],
+            [/在/g, "喺"],
+            [/这里/g, "呢度"],
+            [/那边/g, "嗰边"],
+            [/现在/g, "而家"],
+            [/可以前往/g, "可以去"],
+            [/可以前去/g, "可以去"],
+            [/请前往/g, "請去"],
+            [/请/g, "請"],
+            [/向前走/g, "向前行"],
+            [/直走/g, "直行"],
+            [/往左转/g, "左轉"],
+            [/往右转/g, "右轉"],
+            [/左转/g, "左轉"],
+            [/右转/g, "右轉"],
+            [/掉头/g, "調頭"],
+            [/到达/g, "到咗"],
+            [/到了/g, "到咗"],
+            [/已到达/g, "已經到咗"],
+            [/目的地/g, "目的地"],
+            [/厕所/g, "洗手間"],
+            [/卫生间/g, "洗手間"],
+            [/驾驶/g, "行車"],
+            [/停车/g, "泊車"],
+            [/是否/g, "係咪"],
+            [/没有/g, "冇"],
+            [/无法/g, "冇辦法"],
+            [/正在/g, "而家正喺"],
+            [/附近有/g, "附近有"],
+            [/最近有/g, "最近有"]
+        ];
+
+        replacements.forEach(function (pair) {
+            t = t.replace(pair[0], pair[1]);
+        });
+
+        return t;
+    }
+
+    function tuneReplyByLanguage(text) {
+        if (isCantoneseMode()) return normalizeCantoneseText(text);
+        return String(text || "");
+    }
 
     // ═══════════════════════════════════════════════════════
     //  TTS HELPERS
@@ -150,8 +240,8 @@
             }
 
             var u = new SpeechSynthesisUtterance(cleanText);
-            u.lang = LANGUAGES[selectedLang].code;
-            u.rate = 0.92;
+            u.lang = currentLang().code;
+            u.rate = isCantoneseMode() ? 0.88 : 0.92;
             u.pitch = 1;
             u.volume = 1;
 
@@ -315,7 +405,7 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 audio_base64: audioBase64,
-                language: LANGUAGES[selectedLang].code
+                language: currentLang().code
             })
         })
             .then(function (r) { return r.json(); })
@@ -338,7 +428,7 @@
         voiceBtn.classList.add("active");
         voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
         micBar.classList.add("on");
-        micLabel.textContent = "MIC • " + LANGUAGES[selectedLang].flag + " " + LANGUAGES[selectedLang].ai;
+        micLabel.textContent = "MIC • " + currentLang().flag + " " + currentLang().ai;
 
         if (useRecorder) startRecording();
         else startSR();
@@ -363,7 +453,6 @@
         }
     }
 
-    // ─── SpeechRecognition mode ───
     function startSR() {
         if (!micActive || isListening || isSpeaking || busy) return;
 
@@ -377,7 +466,7 @@
         recognition = new SR();
         recognition.continuous = true;
         recognition.interimResults = false;
-        recognition.lang = LANGUAGES[selectedLang].code;
+        recognition.lang = currentLang().code;
 
         recognition.onresult = function (e) {
             for (var i = e.resultIndex; i < e.results.length; i++) {
@@ -426,7 +515,6 @@
         isListening = false;
     }
 
-    // ─── Recorder mode ───
     function startRecording() {
         if (!micActive || isListening || isSpeaking || busy) return;
 
@@ -519,6 +607,7 @@
                 };
                 locBar.classList.remove("no-gps");
                 reverseGeocode(gpsPos.lat, gpsPos.lng);
+                updateLiveNavigation();
             },
             function () {
                 locBar.classList.add("no-gps");
@@ -539,7 +628,7 @@
     }
 
     // ═══════════════════════════════════════════════════════
-    //  ROUTE
+    //  ROUTE + LIVE NAV
     // ═══════════════════════════════════════════════════════
     function fetchRoute(destAddr, cb) {
         if (!gpsPos) {
@@ -563,6 +652,105 @@
             .catch(function (e) { cb(e.message); });
     }
 
+    function metersBetween(lat1, lng1, lat2, lng2) {
+        var R = 6371000;
+        var toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(lat2 - lat1);
+        var dLng = toRad(lng2 - lng1);
+        var a =
+            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+            Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    function startLiveNavigation(route) {
+        if (!route || !route.steps || !route.steps.length) return;
+        activeRoute = route;
+        routeSteps = route.steps || [];
+        activeStepIndex = 0;
+        lastSpokenStep = -1;
+        navActive = true;
+        highlightActiveStep();
+        speakCurrentStepIfNeeded(true);
+    }
+
+    function highlightActiveStep() {
+        if (!activeRoute || !activeRoute.steps) return;
+
+        activeRoute.steps.forEach(function (_, i) {
+            var el = document.getElementById("rs" + i);
+            if (el) {
+                el.style.background = i === activeStepIndex
+                    ? "rgba(227,24,55,0.18)"
+                    : "transparent";
+            }
+        });
+
+        var activeEl = document.getElementById("rs" + activeStepIndex);
+        if (activeEl) activeEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+
+    function speakCurrentStepIfNeeded(force) {
+        if (!navActive || !activeRoute || !activeRoute.steps) return;
+        if (activeStepIndex >= activeRoute.steps.length) return;
+        if (!force && lastSpokenStep === activeStepIndex) return;
+
+        var step = activeRoute.steps[activeStepIndex];
+        if (!step || !step.text) return;
+
+        lastSpokenStep = activeStepIndex;
+        speak(tuneReplyByLanguage(step.text));
+    }
+
+    function updateLiveNavigation() {
+        if (!navActive || !gpsPos || !activeRoute || !activeRoute.steps) return;
+        if (activeStepIndex >= activeRoute.steps.length) return;
+
+        var now = Date.now();
+        if (now - lastGpsCheckAt < 1500) return;
+        lastGpsCheckAt = now;
+
+        var step = activeRoute.steps[activeStepIndex];
+        if (!step || step.lat == null || step.lng == null) return;
+
+        var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
+
+        if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
+            var warnText = isCantoneseMode()
+                ? "前面大約 " + Math.round(dist) + " 米，" + tuneReplyByLanguage(step.text)
+                : "In " + Math.round(dist) + " meters. " + step.text;
+
+            speak(warnText);
+            lastSpokenStep = activeStepIndex;
+            highlightActiveStep();
+            return;
+        }
+
+        if (dist <= 25) {
+            activeStepIndex++;
+            highlightActiveStep();
+
+            if (activeStepIndex < activeRoute.steps.length) {
+                lastSpokenStep = -1;
+                setTimeout(function () {
+                    speakCurrentStepIfNeeded(true);
+                }, 500);
+            } else {
+                navActive = false;
+                speak(isCantoneseMode() ? "已經到咗目的地。" : "You have arrived.");
+            }
+        }
+    }
+
+    function stopLiveNavigation() {
+        navActive = false;
+        activeRoute = null;
+        activeStepIndex = 0;
+        lastSpokenStep = -1;
+    }
+
     function showRouteSteps(route) {
         removeEl("routeCard");
         routeSteps = route.steps || [];
@@ -578,13 +766,11 @@
         routeSteps.forEach(function (s, i) {
             html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;' + (i === 0 ? 'background:rgba(227,24,55,0.1)' : '') + '">';
             html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
-            html += '<div style="color:#fff;font-size:12px">' + esc(s.text) + '</div></div>';
+            html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(s.text)) + '</div></div>';
         });
 
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:2;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 Speak</button>';
-        html += '<button id="rGm" style="flex:1;padding:10px;border-radius:8px;border:none;background:#4285F4;color:#fff;font-size:11px;font-weight:700;cursor:pointer">Maps</button>';
-        html += '<button id="rWz" style="flex:1;padding:10px;border-radius:8px;border:none;background:#33CCFF;color:#000;font-size:11px;font-weight:700;cursor:pointer">Waze</button>';
+        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer">🔊 Repeat Current Step</button>';
         html += '</div></div>';
 
         div.innerHTML = html;
@@ -593,10 +779,8 @@
 
         document.getElementById("rSpk").addEventListener("click", function () {
             unlockSpeech();
-            speakAllSteps();
+            speakCurrentStepIfNeeded(true);
         });
-        document.getElementById("rGm").addEventListener("click", function () { openMaps(scannedAddr); });
-        document.getElementById("rWz").addEventListener("click", function () { openWaze(scannedAddr); });
     }
 
     function getIcon(t, m) {
@@ -606,38 +790,6 @@
         if (m && m.indexOf("left") >= 0) return "⬅️";
         if (m && m.indexOf("right") >= 0) return "➡️";
         return "⬆️";
-    }
-
-    function speakAllSteps() {
-        unlockSpeech();
-        if (speakingRoute) {
-            stopSpeak();
-            return;
-        }
-        speakingRoute = true;
-        routeStep = 0;
-        speakNext();
-    }
-
-    function speakNext() {
-        if (!speakingRoute || routeStep >= routeSteps.length) {
-            speakingRoute = false;
-            restartMicAfterReply();
-            return;
-        }
-
-        routeSteps.forEach(function (_, i) {
-            var el = document.getElementById("rs" + i);
-            if (el) el.style.background = i === routeStep ? "rgba(227,24,55,0.1)" : "transparent";
-        });
-
-        var el = document.getElementById("rs" + routeStep);
-        if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-
-        speak(routeSteps[routeStep].text, function () {
-            routeStep++;
-            setTimeout(speakNext, 300);
-        });
     }
 
     function openMaps(dest) {
@@ -748,12 +900,14 @@
     }
 
     function cleanReplyForSpeech(reply) {
-        return String(reply || "")
-            .replace(/ADDRESS:.*/i, "")
-            .replace(/PLACE:.*/i, "")
+        var t = String(reply || "")
+            .replace(/ADDRESS:\s*.*$/im, "")
+            .replace(/PLACE:\s*.*$/im, "")
             .replace(/[•\-\*]/g, "")
             .replace(/\n+/g, ". ")
             .trim();
+
+        return tuneReplyByLanguage(t);
     }
 
     // ═══════════════════════════════════════════════════════
@@ -781,28 +935,25 @@
                 return;
             }
 
+            reply = tuneReplyByLanguage(reply);
             addBubble("assistant", reply);
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
                 var navAddr = addrMatch[1].trim();
                 scannedAddr = navAddr;
+                stopLiveNavigation();
 
                 setTimeout(function () {
                     speak(cleanReplyForSpeech(reply), function () {
-                        addBubble("assistant", "🗺 Getting directions...");
+                        addBubble("assistant", isCantoneseMode() ? "🗺 而家開始導航..." : "🗺 Getting directions...");
                         fetchRoute(navAddr, function (routeErr, route) {
                             if (!routeErr && route && route.steps && route.steps.length) {
                                 showRouteSteps(route);
-                                speak(
-                                    "Route found. " + route.steps.length + " steps. " + Math.round((route.total_duration || 0) / 60) + " minutes.",
-                                    function () { speakAllSteps(); }
-                                );
+                                startLiveNavigation(route);
                             } else {
-                                speak("Opening maps.", function () {
-                                    openMaps(navAddr);
-                                    restartMicAfterReply();
-                                });
+                                addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
+                                restartMicAfterReply();
                             }
                         });
                     });
@@ -853,30 +1004,28 @@
                 if (parsed && parsed.address) {
                     var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
                     scannedAddr = fullAddr;
+                    stopLiveNavigation();
                     showDeliveryCard(parsed);
 
                     var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
+                    voice = tuneReplyByLanguage(voice);
 
                     setTimeout(function () {
                         speak(voice, function () {
-                            addBubble("assistant", "🗺 Getting directions...");
+                            addBubble("assistant", isCantoneseMode() ? "🗺 而家開始導航..." : "🗺 Getting directions...");
                             fetchRoute(fullAddr, function (re, route) {
                                 if (!re && route && route.steps && route.steps.length) {
                                     showRouteSteps(route);
-                                    speak(
-                                        "Route. " + route.steps.length + " steps. " + Math.round((route.total_duration || 0) / 60) + " minutes.",
-                                        function () { speakAllSteps(); }
-                                    );
+                                    startLiveNavigation(route);
                                 } else {
-                                    speak("Opening maps.", function () {
-                                        openMaps(fullAddr);
-                                        restartMicAfterReply();
-                                    });
+                                    addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
+                                    restartMicAfterReply();
                                 }
                             });
                         });
                     }, 150);
                 } else {
+                    reply = tuneReplyByLanguage(reply);
                     addBubble("assistant", reply);
                     setTimeout(function () {
                         speak(reply, restartMicAfterReply);
@@ -937,12 +1086,13 @@
     navBtnEl.addEventListener("click", function () {
         unlockSpeech();
         if (scannedAddr) {
+            stopLiveNavigation();
             fetchRoute(scannedAddr, function (e, r) {
                 if (!e && r && r.steps.length) {
                     showRouteSteps(r);
-                    speakAllSteps();
+                    startLiveNavigation(r);
                 } else {
-                    openMaps(scannedAddr);
+                    addBubble("assistant", isCantoneseMode() ? "搵唔到路線。" : "Route not found.");
                 }
             });
         }
@@ -953,5 +1103,10 @@
     initGPS();
 
     var mode = useRecorder ? "(recording mode)" : "(voice mode)";
-    addBubble("assistant", "Ready " + mode + ".\n1️⃣ Pick language\n2️⃣ Tap 🎙️ once — mic stays on\n3️⃣ Say \"nearest haidilao\" or scan a label");
+    addBubble(
+        "assistant",
+        isCantoneseMode()
+            ? "準備好 " + mode + "。\n1️⃣ 揀語言\n2️⃣ 撳 🎙️ 一次\n3️⃣ 可以講：最近洗手間喺邊"
+            : "Ready " + mode + ".\n1️⃣ Pick language\n2️⃣ Tap 🎙️ once — mic stays on\n3️⃣ Say \"nearest haidilao\" or scan a label"
+    );
 })();
