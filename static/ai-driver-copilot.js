@@ -19,7 +19,7 @@
         { label: "EN", flag: "🇬🇧", code: "en-SG", ai: "English" },
         { label: "中文", flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
         { label: "繁體", flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
-        { label: "廣東話", flag: "🇭🇰", code: "yue-Hant-HK", ai: "Cantonese" },
+        { label: "廣東話", flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
         { label: "Malay", flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
         { label: "Tamil", flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
         { label: "ไทย", flag: "🇹🇭", code: "th-TH", ai: "Thai" },
@@ -54,9 +54,14 @@
         var locInfo = currentStreet
             ? "\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")
             : "";
+
+        var replyRule = lang.ai === "Cantonese"
+            ? "LANGUAGE: Reply ONLY in Cantonese Chinese using Traditional Chinese characters. Do not reply in Mandarin. Keep wording natural for Hong Kong Cantonese speakers."
+            : "LANGUAGE: Reply ONLY in " + lang.ai + ".";
+
         return [
             "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
-            "LANGUAGE: Reply ONLY in " + lang.ai + ".",
+            replyRule,
             "RULES: Under 60 words. Professional. No slang. Action first.",
             "",
             "NAVIGATION REQUESTS:",
