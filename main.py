@@ -19,6 +19,7 @@ def index():
 def static_files(path):
     return send_from_directory("static", path)
 
+
 # =========================================================
 # REVERSE GEOCODE
 # =========================================================
@@ -85,7 +86,7 @@ def geocode():
 # =========================================================
 @app.route("/api/address-to-latlng")
 def address_to_latlng():
-    """Forward geocode: address text → lat/lng."""
+    """Forward geocode: address text -> lat/lng."""
     try:
         address = request.args.get("address", "")
         if not address:
@@ -121,22 +122,26 @@ def address_to_latlng():
 
 
 # =========================================================
-# ROUTE
+# ROUTE (supports driving + walking via OSRM)
 # =========================================================
 @app.route("/api/route")
 def route():
-    """Get turn-by-turn driving directions using OSRM."""
+    """Get turn-by-turn directions using OSRM. Supports driving and walking profiles."""
     try:
         from_lat = request.args.get("from_lat")
         from_lng = request.args.get("from_lng")
         to_lat = request.args.get("to_lat")
         to_lng = request.args.get("to_lng")
+        profile = request.args.get("profile", "driving")  # "driving" or "foot"
 
         if not all([from_lat, from_lng, to_lat, to_lng]):
             return jsonify({"error": "Missing coordinates"}), 400
 
+        # OSRM profiles: driving, foot, bicycle
+        osrm_profile = "foot" if profile in ("foot", "walking") else "driving"
+
         url = (
-            f"https://router.project-osrm.org/route/v1/driving/"
+            f"https://router.project-osrm.org/route/v1/{osrm_profile}/"
             f"{from_lng},{from_lat};{to_lng},{to_lat}"
             f"?overview=full&steps=true&annotations=false&geometries=geojson"
         )
@@ -161,7 +166,7 @@ def route():
                 m_type = maneuver.get("type", "")
                 loc = maneuver.get("location", [None, None])
 
-                text = build_instruction(m_type, modifier, name, distance)
+                text = build_instruction(m_type, modifier, name, distance, osrm_profile)
                 if text:
                     steps.append({
                         "text": text,
@@ -181,8 +186,9 @@ def route():
             "steps": steps,
             "total_distance": total_dist,
             "total_duration": total_time,
-            "summary": f"{total_dist}m, ~{total_time // 60} min",
-            "geometry": geometry
+            "summary": f"{total_dist}m, ~{total_time // 60} min ({osrm_profile})",
+            "geometry": geometry,
+            "profile": osrm_profile
         })
 
     except Exception as e:
@@ -192,13 +198,14 @@ def route():
         })
 
 
-def build_instruction(m_type, modifier, name, distance):
+def build_instruction(m_type, modifier, name, distance, profile="driving"):
     """Convert OSRM maneuver into spoken direction."""
     dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance / 1000, 1)}km"
     road = f" onto {name}" if name else ""
+    verb = "Walk" if profile == "foot" else "Drive"
 
     if m_type == "depart":
-        return f"Start driving{road} for {dist_str}"
+        return f"Start {verb.lower()}ing{road} for {dist_str}"
     elif m_type == "arrive":
         return f"You have arrived at your destination{road}"
     elif m_type == "turn":
@@ -232,7 +239,7 @@ def build_instruction(m_type, modifier, name, distance):
 # =========================================================
 @app.route("/api/weather")
 def weather():
-    """Check weather at destination lat/lng using WeatherAPI."""
+    """Check weather at given lat/lng using WeatherAPI."""
     try:
         lat = request.args.get("lat")
         lng = request.args.get("lng")
@@ -244,7 +251,8 @@ def weather():
             return jsonify({
                 "status": "weather_unavailable",
                 "is_rain": False,
-                "description": "Weather API key not configured"
+                "description": "Weather API key not configured",
+                "temp_c": None
             })
 
         resp = requests.get(
@@ -257,20 +265,26 @@ def weather():
         )
         data = resp.json()
 
-        condition_text = str(
-            data.get("current", {})
-                .get("condition", {})
-                .get("text", "")
-        ).lower()
+        current = data.get("current", {})
+        condition = current.get("condition", {})
+        condition_text = str(condition.get("text", "")).lower()
 
         rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
         is_rain = any(k in condition_text for k in rain_keywords)
 
+        bad_keywords = rain_keywords + ["snow", "sleet", "blizzard", "heavy", "fog", "mist"]
+        is_bad = any(k in condition_text for k in bad_keywords)
+
         return jsonify({
             "status": "ok",
             "is_rain": is_rain,
-            "description": condition_text or "unknown",
-            "temp_c": data.get("current", {}).get("temp_c"),
+            "is_bad_weather": is_bad,
+            "description": condition.get("text", "Unknown"),
+            "temp_c": current.get("temp_c"),
+            "humidity": current.get("humidity"),
+            "wind_kph": current.get("wind_kph"),
+            "feelslike_c": current.get("feelslike_c"),
+            "icon": condition.get("icon", ""),
             "raw": data
         })
 
@@ -278,7 +292,8 @@ def weather():
         return jsonify({
             "status": "weather_error",
             "is_rain": False,
-            "description": str(e)
+            "description": str(e),
+            "temp_c": None
         })
 
 
@@ -351,18 +366,10 @@ def transcribe():
 
             try:
                 lang_map = {
-                    "en": "en",
-                    "en-SG": "en",
-                    "zh-CN": "zh",
-                    "zh-TW": "zh",
-                    "zh-HK": "zh",
-                    "ms-MY": "ms",
-                    "ta-IN": "ta",
-                    "th-TH": "th",
-                    "vi-VN": "vi",
-                    "id-ID": "id",
-                    "ko-KR": "ko",
-                    "ja-JP": "ja"
+                    "en": "en", "en-SG": "en",
+                    "zh-CN": "zh", "zh-TW": "zh", "zh-HK": "zh",
+                    "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th",
+                    "vi-VN": "vi", "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja"
                 }
 
                 whisper_lang = "en"
