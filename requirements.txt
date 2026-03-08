@@ -1,7 +1,3 @@
-fastapi==0.111.0
-uvicorn[standard]==0.29.0
-anthropic
-python-multipart
-httpx
-edge-tts
-websockets
+flask==3.1.0
+requests==2.32.3
+gunicorn==23.0.0

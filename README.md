@@ -1,76 +1,66 @@
-# 🥷 Ninja Van Co-Pilot — Deployment Guide
+# Ninja Co-Pilot — AI Driver Assistant
 
-## What's Inside
+## Project Structure
 ```
 ninja-copilot/
-├── main.py              ← FastAPI backend (API proxy + serves frontend)
-├── requirements.txt     ← Python dependencies
-├── Dockerfile           ← Container config for Cloud Run
-├── deploy.sh            ← One-command deploy script
-└── static/
-    └── index.html       ← Mobile app (voice + photo + chat)
+├── static/
+│   ├── index.html          ← Frontend UI
+│   └── ai-driver-copilot.js ← Vanilla JS (no React needed)
+├── main.py                  ← Flask backend (proxies API calls)
+├── Dockerfile               ← Cloud Run deployment
+├── requirements.txt         ← Python dependencies
+└── README.md
 ```
 
----
+## Features
+- **Image auto-compression**: Resizes + compresses to under 4MB (fixes 5MB API limit error)
+- **Auto language detection**: No language selector needed — AI detects English, Chinese, Malay, Tamil, Thai, Vietnamese, etc.
+- **Short structured replies**: Max 60 words, no slang, professional bullet-point format
+- **Voice input**: Tap to speak in any language (browser auto-detects)
+- **Voice output**: AI reads responses and navigation steps aloud
+- **GPS tracking**: Shows live GPS status
+- **Map + turn-by-turn nav**: Google Maps embed + step-by-step voice directions
+- **Dual API support**: Works with Claude API or OpenAI GPT-4o
 
-## 🚀 Deploy to Google Cloud Run (Step by Step)
+## Deploy to Cloud Run
 
-### Step 1 — Install Google Cloud CLI on your laptop
-Download from: https://cloud.google.com/sdk/docs/install
-
-Then login:
+### 1. Set environment variables
 ```bash
-gcloud auth login
+# Use Claude (default)
+export ANTHROPIC_API_KEY="sk-ant-..."
+export AI_PROVIDER="claude"
+
+# OR use OpenAI
+export OPENAI_API_KEY="sk-..."
+export AI_PROVIDER="openai"
 ```
 
-### Step 2 — Create a GCP Project (if you don't have one)
-1. Go to https://console.cloud.google.com
-2. Click "New Project"
-3. Name it: `ninja-copilot`
-4. Copy your **Project ID** (e.g. `ninja-copilot-123456`)
-
-### Step 3 — Edit deploy.sh
-Open `deploy.sh` and replace:
+### 2. Build and deploy
 ```bash
-PROJECT_ID="your-gcp-project-id"   ← paste your real Project ID here
+gcloud builds submit --tag gcr.io/YOUR_PROJECT/ninja-copilot
+gcloud run deploy ninja-copilot \
+  --image gcr.io/YOUR_PROJECT/ninja-copilot \
+  --platform managed \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --set-env-vars "ANTHROPIC_API_KEY=sk-ant-...,AI_PROVIDER=claude"
 ```
 
-### Step 4 — Run the deploy script
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
-It will ask for your Anthropic API key, then:
-- Build the Docker container
-- Push to Google Container Registry
-- Deploy to Cloud Run (Singapore region)
-- Give you a live URL like: https://ninja-copilot-abc123-as.a.run.app
-
-### Step 5 — Open on your phone!
-Copy the URL → open in Chrome on your phone → done! 🎉
-
----
-
-## 💰 Cost
-- Cloud Run free tier: **2 million requests/month free**
-- For a capstone demo: **effectively $0**
-
----
-
-## 🧪 Test Locally First (Optional)
+### 3. Test locally
 ```bash
 pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...
-uvicorn main:app --reload --port 8080
+ANTHROPIC_API_KEY="your-key" python main.py
+# Open http://localhost:8080
 ```
-Then open: http://localhost:8080
 
----
+## API Endpoints
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Serves index.html |
+| `/api/chat` | POST | Text chat with AI |
+| `/api/scan` | POST | Image OCR + address extraction |
 
-## 📱 Features
-- 🎙️ Voice input — tap to speak your problem
-- 📷 Photo upload — photograph address/parcel/sign
-- 🤖 AI vision — analyzes photos and gives guidance
-- 🔊 Voice response — AI speaks back to you
-- 💬 Full conversation memory
-- ⚡ Quick scenario chips for demo
+## Switching between Claude and OpenAI
+Set the `AI_PROVIDER` environment variable:
+- `claude` → Uses Claude Sonnet (default)
+- `openai` → Uses GPT-4o (requires `OPENAI_API_KEY`)

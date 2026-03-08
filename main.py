@@ -1,191 +1,211 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, Response
-from pydantic import BaseModel
-import anthropic
+"""
+Ninja Co-Pilot — Backend (Flask)
+Serves static files + proxies AI API calls.
+Deploy on Google Cloud Run.
+"""
+
 import os
-from typing import List
-import io
-import re
+import json
+import requests
+from flask import Flask, request, jsonify, send_from_directory
 
-# Safe import of edge_tts
-try:
-    import edge_tts
-    EDGE_TTS_AVAILABLE = True
-    print("edge-tts loaded OK")
-except ImportError:
-    EDGE_TTS_AVAILABLE = False
-    print("WARNING: edge-tts not available, TTS will be disabled")
+app = Flask(__name__, static_folder="static")
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
+# ─── API Keys (set in Cloud Run environment variables) ───
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-VOICE_MAP = {
-    "female": "en-US-AvaMultilingualNeural",
-    "male":   "en-US-AndrewMultilingualNeural",
-}
-
-SYSTEM_PROMPT = """You are a seasoned Ninja Van Senior Driver with 10+ years of last-mile delivery experience across Southeast Asia. You talk like a real senior driver — casual, confident, street-smart. You are the driver's trusted buddy riding shotgun, not a corporate bot.
-
-Your expertise:
-- Reading and extracting delivery addresses from photos of labels, slips, order forms
-- Finding difficult addresses using landmarks, delivery notes, NLP tricks
-- Smart route re-sequencing when traffic hits or stops are skipped
-- Handling absent, angry, or difficult customers professionally
-- Incident reporting: damaged parcels, failed deliveries, road accidents
-- Ninja Van SOPs and escalation procedures
-
-WHEN GIVEN A PHOTO OF AN ADDRESS LABEL OR ORDER SLIP:
-1. Extract the full delivery address from the image
-2. Give a brief 1-line description of what you see
-3. Always end with [NAVIGATE_TO: full extracted address, country]
-This will automatically open Google Maps navigation for the driver.
-
-WHEN GIVEN A PHOTO OF A DAMAGED PARCEL:
-- Guide through incident reporting steps
-- Do NOT add NAVIGATE_TO tag
-
-WHEN GIVEN A PHOTO OF A MAP OR ROUTE:
-- Suggest best sequence
-- Do NOT add NAVIGATE_TO tag
-
-GPS & NAVIGATION:
-- If the driver message contains [DRIVER_GPS: lat,lng], you know their exact location
-- When driver mentions a delivery address, extract it and add [NAVIGATE_TO: address]
-
-CRITICAL LANGUAGE RULE:
-- ALWAYS reply in EXACTLY the same language the driver used
-- If Malay reply Malay. Chinese reply Chinese. Thai reply Thai. Etc.
-- Never switch languages unless the driver switches first
-
-IMPORTANT RESPONSE FORMAT:
-- Do NOT use emojis - they get read aloud by voice
-- Plain text only, no markdown
-- SHORT and ACTIONABLE - max 3 steps
-- Encouraging tone
-
-SPECIAL TAGS (add on new line when relevant):
-- Navigation needed: [NAVIGATE_TO: full address, country]
-- Show GPS location: [SHOW_MY_LOCATION]"""
+# Choose provider: "claude" or "openai"
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude")
 
 
-class ChatRequest(BaseModel):
-    messages: List[dict]
+# ═══════════════════════════════════════════════════════════
+#  SERVE STATIC FILES
+# ═══════════════════════════════════════════════════════════
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
 
-class TTSRequest(BaseModel):
-    text: str
-    gender: str = "female"
+@app.route("/<path:path>")
+def static_files(path):
+    return send_from_directory("static", path)
 
 
-def clean_text_for_tts(text: str) -> str:
-    # Remove emojis and markdown
-    clean = re.sub(r'[\U00010000-\U0010ffff]', '', text)
-    clean = re.sub(r'[*_#\[\]]', '', clean)
-    clean = re.sub(r'\s+', ' ', clean).strip()
-    return clean
-
-
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
-
-
-@app.get("/health")
-async def health():
-    return {"status": "ok", "edge_tts": EDGE_TTS_AVAILABLE}
-
-
-@app.post("/tts")
-async def tts(request: TTSRequest):
-    if not EDGE_TTS_AVAILABLE:
-        raise HTTPException(status_code=503, detail="TTS not available")
-
-    voice = VOICE_MAP.get(request.gender, VOICE_MAP["female"])
-    clean = clean_text_for_tts(request.text)
-
-    if not clean:
-        raise HTTPException(status_code=400, detail="Empty text")
-
+# ═══════════════════════════════════════════════════════════
+#  CHAT ENDPOINT (text only)
+# ═══════════════════════════════════════════════════════════
+@app.route("/api/chat", methods=["POST"])
+def chat():
     try:
-        communicate = edge_tts.Communicate(clean, voice)
-        audio_buffer = io.BytesIO()
+        data = request.json
+        system = data.get("system", "")
+        messages = data.get("messages", [])
 
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                audio_buffer.write(chunk["data"])
+        if AI_PROVIDER == "openai" and OPENAI_API_KEY:
+            reply = call_openai(system, messages)
+        else:
+            reply = call_claude(system, messages)
 
-        audio_buffer.seek(0)
-        audio_data = audio_buffer.read()
-
-        if not audio_data:
-            raise HTTPException(status_code=500, detail="No audio generated")
-
-        return Response(
-            content=audio_data,
-            media_type="audio/mpeg",
-            headers={"Cache-Control": "no-cache"}
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    if not openai_key:
-        return {"transcript": "", "language": "en", "fallback": True}
-    try:
-        import httpx
-        audio_data = await audio.read()
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {openai_key}"},
-                files={"file": (audio.filename or "audio.webm", audio_data, audio.content_type or "audio/webm")},
-                data={"model": "whisper-1", "response_format": "verbose_json"}
-            )
-            result = response.json()
-            return {"transcript": result.get("text", ""), "language": result.get("language", "en"), "fallback": False}
-    except Exception:
-        return {"transcript": "", "language": "en", "fallback": True}
-
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="API key not configured")
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=request.messages,
-        )
-        full_text = response.content[0].text
-        dest_address = None
-        show_my_location = False
-        reply_text = full_text
-
-        if "[NAVIGATE_TO:" in full_text:
-            parts = full_text.split("[NAVIGATE_TO:")
-            reply_text = parts[0].strip()
-            dest_address = parts[1].split("]")[0].strip()
-
-        if "[SHOW_MY_LOCATION]" in full_text:
-            reply_text = full_text.replace("[SHOW_MY_LOCATION]", "").strip()
-            show_my_location = True
-
-        return {"reply": reply_text, "dest_address": dest_address, "show_my_location": show_my_location}
+        return jsonify({"reply": reply})
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return jsonify({"error": str(e)}), 500
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# ═══════════════════════════════════════════════════════════
+#  SCAN ENDPOINT (image + OCR)
+# ═══════════════════════════════════════════════════════════
+@app.route("/api/scan", methods=["POST"])
+def scan():
+    try:
+        data = request.json
+        system = data.get("system", "")
+        image_base64 = data.get("image_base64", "")
+        ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
+
+        if AI_PROVIDER == "openai" and OPENAI_API_KEY:
+            reply = call_openai_vision(system, image_base64, ocr_prompt)
+        else:
+            reply = call_claude_vision(system, image_base64, ocr_prompt)
+
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════
+#  CLAUDE API
+# ═══════════════════════════════════════════════════════════
+def call_claude(system, messages):
+    """Call Claude API for text chat."""
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 300,
+            "system": system,
+            "messages": messages
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(f"{data['error'].get('type', 'error')}: {data['error'].get('message', '')}")
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+def call_claude_vision(system, image_base64, prompt):
+    """Call Claude API with image for OCR."""
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 300,
+            "system": system,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": image_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }]
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(f"{data['error'].get('type', 'error')}: {data['error'].get('message', '')}")
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+# ═══════════════════════════════════════════════════════════
+#  OPENAI API (alternative)
+# ═══════════════════════════════════════════════════════════
+def call_openai(system, messages):
+    """Call OpenAI API for text chat."""
+    oai_messages = [{"role": "system", "content": system}] + messages
+    resp = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        },
+        json={
+            "model": "gpt-4o",
+            "max_tokens": 300,
+            "messages": oai_messages
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", "OpenAI error"))
+    return data["choices"][0]["message"]["content"]
+
+
+def call_openai_vision(system, image_base64, prompt):
+    """Call OpenAI API with image for OCR."""
+    resp = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {OPENAI_API_KEY}"
+        },
+        json={
+            "model": "gpt-4o",
+            "max_tokens": 300,
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}"
+                            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", "OpenAI error"))
+    return data["choices"][0]["message"]["content"]
+
+
+# ═══════════════════════════════════════════════════════════
+#  RUN
+# ═══════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
