@@ -10,8 +10,8 @@
     "use strict";
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
-    var ETA_NOTIFY_SECONDS = 300; // 5 min
-    var ETA_NOTIFY_METERS = 1200; // fallback
+    var ETA_NOTIFY_SECONDS = 300;
+    var ETA_NOTIFY_METERS = 1200;
     var GPS_MAX_ACCURACY = 60;
     var DEFAULT_CUSTOMER_PHONE = "";
 
@@ -21,17 +21,17 @@
     var useRecorder = !hasSR;
 
     var LANGUAGES = [
-        { label: "EN",     flag: "🇬🇧", code: "en-SG", ai: "English" },
-        { label: "中文",    flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
-        { label: "繁體",    flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
-        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
-        { label: "Malay",  flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
-        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
-        { label: "ไทย",    flag: "🇹🇭", code: "th-TH", ai: "Thai" },
-        { label: "Việt",   flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
-        { label: "Indo",   flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
-        { label: "한국어",   flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
-        { label: "日本語",   flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
+        { label: "EN", flag: "🇬🇧", code: "en-SG", ai: "English" },
+        { label: "中文", flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
+        { label: "繁體", flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
+        { label: "廣東話", flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
+        { label: "Malay", flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
+        { label: "Tamil", flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
+        { label: "ไทย", flag: "🇹🇭", code: "th-TH", ai: "Thai" },
+        { label: "Việt", flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
+        { label: "Indo", flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
+        { label: "한국어", flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
+        { label: "日本語", flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
     ];
 
     var LANG_TTS = {
@@ -170,16 +170,10 @@
             "FORMAT 2 — ADDRESS (for specific known addresses only):",
             "When driver provides a FULL specific street address or postal code:",
             "- Reply with: ADDRESS: <the full address>",
-            "- Example: driver says 'go to 1 Jurong West Central 2' → ADDRESS: 1 Jurong West Central 2 Singapore",
-            "- Example: driver says 'block 214 Bedok' → ADDRESS: Block 214 Bedok North Street 1 Singapore",
             "",
             "CRITICAL: NEVER guess a specific street address for a business name.",
             "If driver asks for a business/POI, ALWAYS use SEARCH: format.",
-            "If driver gives a full address, use ADDRESS: format.",
-            "",
-            "PARTIAL ADDRESSES:",
-            "If driver says only a block number like '214', 'block 214', or 'blk 214',",
-            "combine it with current location area and return ADDRESS: Block 214 <nearest street from current location> Singapore"
+            "If driver gives a full address, use ADDRESS: format."
         ].join("\n");
     }
 
@@ -199,19 +193,9 @@
         return [
             "You are a Singapore street/location identifier for delivery drivers.",
             "Analyze this photo taken from a vehicle or street level in Singapore.",
-            "Look for ANY location clues:",
-            "- Road signs (blue/green signs with street names)",
-            "- Building names, condo names, mall names",
-            "- Block/HDB numbers visible on buildings",
-            "- Bus stop numbers or MRT station names",
-            "- Shopfront names or signage",
-            "- Expressway signs (PIE, CTE, AYE, ECP, etc.)",
-            "- Landmark structures",
-            "- Postal codes on any signage",
-            "",
-            "Driver is currently near: " + (currentStreet || "unknown") + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "") + ".",
-            "",
-            "Return JSON ONLY with what you can identify:",
+            "Look for road signs, building names, block numbers, MRT names, bus stop numbers, mall names, shop names, landmarks, postal codes.",
+            "Driver is currently near: " + (currentStreet || "unknown") + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : ""),
+            "Return JSON ONLY:",
             '{"road_name":"street/road name if visible or null","building":"building/condo/mall name or null","block":"block/HDB number or null","expressway":"expressway name or null","landmark":"any recognizable landmark or null","bus_stop":"bus stop number or null","best_search":"single best search term for OneMap.sg to find this location","confidence":"high/medium/low","clues":"brief description of what you saw"}'
         ].join("\n");
     }
@@ -326,33 +310,14 @@
             [/附近的/g, "附近嘅"],
             [/你的/g, "你嘅"],
             [/您的/g, "你嘅"],
-            [/当前位置/g, "而家位置"],
-            [/当前的位置/g, "而家位置"],
             [/现在/g, "而家"],
-            [/位于/g, "喺"],
-            [/这里/g, "呢度"],
-            [/那边/g, "嗰邊"],
-            [/在这里/g, "喺呢度"],
-            [/在那边/g, "喺嗰邊"],
-            [/在前面/g, "喺前面"],
-            [/在附近/g, "喺附近"],
-            [/在/g, "喺"],
-            [/可以前往/g, "可以去"],
-            [/请前往/g, "請去"],
-            [/向前走/g, "向前行"],
-            [/直走/g, "直行"],
             [/左转/g, "左轉"],
             [/右转/g, "右轉"],
-            [/掉头/g, "調頭"],
             [/到达/g, "到咗"],
             [/到了/g, "到咗"],
-            [/已到达/g, "已經到咗"],
             [/厕所/g, "洗手間"],
-            [/卫生间/g, "洗手間"],
             [/没有/g, "冇"],
-            [/无法/g, "冇辦法"],
-            [/是否/g, "係咪"],
-            [/正在/g, "而家正喺"]
+            [/无法/g, "冇辦法"]
         ];
 
         replacements.forEach(function (pair) {
@@ -391,12 +356,10 @@
         return customerPhone.replace(/^\+/, "");
     }
 
-    // ALWAYS ENGLISH
     function getArrivalMessage() {
         return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
     }
 
-    // ALWAYS ENGLISH
     function getRainDelayMessage() {
         return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
     }
@@ -421,7 +384,7 @@
         removeArrivalCard();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
-        var msg = getArrivalMessage(); // English only
+        var msg = getArrivalMessage();
         var title = uiText("notify_arrival");
         var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
         var hasPhone = !!customerPhone;
@@ -462,7 +425,7 @@
     function showRainDelayCard(weatherInfo) {
         removeRainCard();
 
-        var msg = getRainDelayMessage(); // English only
+        var msg = getRainDelayMessage();
         var title = uiText("rain_near_dest");
         var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
         var hasPhone = !!customerPhone;
@@ -532,16 +495,12 @@
                 return lang.indexOf(t.toLowerCase()) === 0;
             });
         });
-        if (partial) return partial;
-
-        return null;
+        return partial || null;
     }
 
     function pickCantoneseVoice() {
         if (!window.speechSynthesis) return null;
         var voices = window.speechSynthesis.getVoices() || [];
-        if (!voices.length) return null;
-
         return voices.find(function (v) {
             var s = ((v.name || "") + " " + (v.lang || "")).toLowerCase();
             return /yue|cantonese|hong kong|zh-hk/.test(s);
@@ -560,8 +519,6 @@
     }
 
     function detectLang(text) {
-        var t = String(text || "");
-
         if (currentLang().code === "zh-HK") { lastDetectedLang = "zh-HK"; return; }
         if (currentLang().code === "zh-TW") { lastDetectedLang = "zh-TW"; return; }
         if (currentLang().code === "zh-CN") { lastDetectedLang = "zh-CN"; return; }
@@ -572,19 +529,6 @@
         if (currentLang().code === "id-ID") { lastDetectedLang = "id"; return; }
         if (currentLang().code === "ko-KR") { lastDetectedLang = "ko"; return; }
         if (currentLang().code === "ja-JP") { lastDetectedLang = "ja"; return; }
-
-        if (/[\u0e00-\u0e7f]/.test(t)) { lastDetectedLang = "th"; return; }
-        if (/[\uac00-\ud7af]/.test(t)) { lastDetectedLang = "ko"; return; }
-        if (/[\u3040-\u30ff]/.test(t)) { lastDetectedLang = "ja"; return; }
-        if (/[佢哋佢而家咗喺咩唔冇啦啲咁樣嗰呢度邊度搵返嚟]/.test(t)) { lastDetectedLang = "zh-HK"; return; }
-        if (/[這個那個現在時間還有讓會話點樣處理聯絡顯示導航這裡附近樓層單位]/.test(t)) { lastDetectedLang = "zh-TW"; return; }
-        if (/[这个那个现在时间还有让会话怎么处理联系显示导航这里附近楼层单位]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
-        if (/[\u4e00-\u9fff]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
-        if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(t)) { lastDetectedLang = "ms"; return; }
-        if (/\b(kamu|tidak|bisa|dengan|untuk|ya)\b/i.test(t)) { lastDetectedLang = "id"; return; }
-        if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(t)) { lastDetectedLang = "fil"; return; }
-        if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(t)) { lastDetectedLang = "vi"; return; }
-
         lastDetectedLang = "en";
     }
 
@@ -618,9 +562,7 @@
                 chosenVoice = pickVoiceByTargets(targets);
             }
 
-            if (!chosenVoice) {
-                chosenVoice = pickVoiceByTargets(LANG_TTS.en);
-            }
+            if (!chosenVoice) chosenVoice = pickVoiceByTargets(LANG_TTS.en);
 
             var u = new SpeechSynthesisUtterance(cleanText);
             u.rate = isCantoneseMode() ? 0.90 : 0.95;
@@ -695,7 +637,7 @@
                 syncReplyLanguageToSelection();
                 renderLangBar();
                 micLabel.textContent = "MIC • " + lang.flag + " " + lang.ai;
-                addBubble("assistant", "🌐 " + lang.flag + " " + lang.ai);
+                addBubble("assistant", lang.flag + " " + lang.ai);
             });
             langBar.appendChild(btn);
         });
@@ -1056,8 +998,13 @@
         fetch("/api/geocode?lat=" + lat + "&lng=" + lng)
             .then(function (r) { return r.json(); })
             .then(function (d) {
-                currentStreet = d.address || "";
-                locAddr.textContent = currentStreet || lat.toFixed(5) + "," + lng.toFixed(5);
+                if (d.address) {
+                    currentStreet = d.address;
+                    locAddr.textContent = currentStreet + (gpsPos && gpsPos.acc ? " • ±" + Math.round(gpsPos.acc) + "m" : "");
+                } else {
+                    currentStreet = "";
+                    locAddr.textContent = "Fetching Singapore address...";
+                }
             })
             .catch(function () {});
     }
@@ -1265,7 +1212,7 @@
         });
 
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Current Step</button>';
+        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">Repeat Current Step</button>';
         html += '</div></div>';
 
         div.innerHTML = html;
@@ -1301,20 +1248,20 @@
 
         if (parsed.unit) {
             html += '<div class="unit-card"><div class="unit-label">UNIT / BLOCK</div><div class="unit-num">' + esc(parsed.unit) + '</div><div class="unit-addr">' + esc(parsed.address) + '</div>';
-            if (parsed.language) html += '<div class="unit-lang">🌐 ' + esc(parsed.language) + '</div>';
+            if (parsed.language) html += '<div class="unit-lang">' + esc(parsed.language) + '</div>';
             html += '</div>';
         } else {
             html += '<div class="unit-card"><div class="unit-label">DELIVERY ADDRESS</div><div class="unit-num" style="font-size:20px">' + esc(parsed.address) + '</div>';
-            if (parsed.postal) html += '<div class="unit-addr">📮 ' + esc(parsed.postal) + '</div>';
+            if (parsed.postal) html += '<div class="unit-addr">S' + esc(parsed.postal) + '</div>';
             html += '</div>';
         }
 
         if (parsed.recipient) {
-            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">👤 ' + esc(parsed.recipient) + '</div>';
+            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">' + esc(parsed.recipient) + '</div>';
         }
 
         if (parsed.phone) {
-            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">📞 ' + esc(parsed.phone) + '</div>';
+            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">' + esc(parsed.phone) + '</div>';
         }
 
         html += '<div class="anav"><div class="anav-title"><div class="anav-dot"></div>NAVIGATING</div><div class="mf"><iframe src="' + mapSrc + '" width="100%" height="180" allowfullscreen loading="lazy"></iframe></div></div>';
@@ -1435,7 +1382,6 @@
             detectLang(reply);
             addBubble("assistant", reply);
 
-            // --- SEARCH: flow (POI/business lookup via OneMap) ---
             var searchMatch = reply.match(/SEARCH:\s*(.+)/i);
             if (searchMatch && searchMatch[1]) {
                 var searchQuery = searchMatch[1].trim();
@@ -1443,34 +1389,26 @@
 
                 setTimeout(function () {
                     speak(cleanReplyForSpeech(reply), function () {
-                        addBubble("assistant", "🔍 " + searchQuery + "...");
+                        addBubble("assistant", "Searching: " + searchQuery + "...");
                         showProc();
 
                         apiOneMapSearch(searchQuery, function (searchErr, searchData) {
                             hideProc();
 
                             if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
-                                // Fallback: try as address via fetchRoute
-                                addBubble("assistant", "OneMap: no results. Trying address lookup...");
-                                fetchRoute(searchQuery, function (routeErr, route) {
-                                    if (!routeErr && route && route.steps && route.steps.length) {
-                                        scannedAddr = searchQuery;
-                                        showRouteSteps(route);
-                                        startLiveNavigation(route);
-                                    } else {
-                                        addBubble("assistant", uiText("route_not_found"));
-                                        restartMicAfterReply();
-                                    }
-                                });
+                                addBubble("assistant", "OneMap search returned no result.");
+                                restartMicAfterReply();
                                 return;
                             }
 
                             var best = searchData.results[0];
                             var dispName = best.building || best.address || searchQuery;
-                            var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
+                            var distInfo = best.distance_m != null
+                                ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)"
+                                : "";
 
                             scannedAddr = best.address;
-                            addBubble("assistant", "📍 " + dispName + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
+                            addBubble("assistant", dispName + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
 
                             addBubble("assistant", uiText("route_starting"));
                             fetchRouteByCoords(best.lat, best.lng, dispName, function (routeErr, route) {
@@ -1488,7 +1426,6 @@
                 return;
             }
 
-            // --- ADDRESS: flow (direct address geocode via OneMap) ---
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
                 var navAddr = addrMatch[1].trim();
@@ -1512,7 +1449,6 @@
                 return;
             }
 
-            // --- Normal reply (no navigation) ---
             setTimeout(function () {
                 speak(cleanReplyForSpeech(reply), restartMicAfterReply);
             }, 150);
@@ -1533,7 +1469,7 @@
                 return;
             }
 
-            addBubble("user", "📷 Scanned (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
+            addBubble("user", "Scanned image", img.preview);
             showProc();
 
             apiScan(img.base64, function (err2, reply) {
@@ -1604,7 +1540,7 @@
                 return;
             }
 
-            addBubble("user", "📍 Street scan (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
+            addBubble("user", "Street scan", img.preview);
             showProc();
 
             apiScanStreet(img.base64, function (err2, reply) {
@@ -1624,61 +1560,41 @@
                 } catch (e) {}
 
                 if (!parsed || !parsed.best_search) {
-                    addBubble("assistant", "Could not identify location from photo. Try capturing a road sign or building name.");
+                    addBubble("assistant", "Could not identify location from photo.");
                     speak("Could not identify location.", restartMicAfterReply);
                     return;
                 }
 
-                // Show what was detected
                 var clueText = "";
-                if (parsed.road_name) clueText += "🛣 " + parsed.road_name + "\n";
-                if (parsed.building) clueText += "🏢 " + parsed.building + "\n";
-                if (parsed.block) clueText += "🔢 Block " + parsed.block + "\n";
-                if (parsed.expressway) clueText += "🛤 " + parsed.expressway + "\n";
-                if (parsed.landmark) clueText += "📍 " + parsed.landmark + "\n";
-                if (parsed.bus_stop) clueText += "🚌 Stop " + parsed.bus_stop + "\n";
-                if (parsed.clues) clueText += "👁 " + parsed.clues + "\n";
-                clueText += "🔎 Searching: " + parsed.best_search;
+                if (parsed.road_name) clueText += "Road: " + parsed.road_name + "\n";
+                if (parsed.building) clueText += "Building: " + parsed.building + "\n";
+                if (parsed.block) clueText += "Block: " + parsed.block + "\n";
+                if (parsed.landmark) clueText += "Landmark: " + parsed.landmark + "\n";
+                clueText += "Searching: " + parsed.best_search;
 
                 addBubble("assistant", clueText);
 
-                // Search OneMap with the identified location
                 apiOneMapSearch(parsed.best_search, function (searchErr, searchData) {
                     if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
-                        // Try road_name or building as fallback search
-                        var fallbackQuery = parsed.road_name || parsed.building || parsed.block;
-                        if (fallbackQuery) {
-                            addBubble("assistant", "Trying: " + fallbackQuery + "...");
-                            apiOneMapSearch(fallbackQuery, function (fbErr, fbData) {
-                                if (!fbErr && fbData && fbData.results && fbData.results.length) {
-                                    showStreetSearchResult(fbData.results[0]);
-                                } else {
-                                    addBubble("assistant", "Location not found on OneMap.");
-                                    restartMicAfterReply();
-                                }
-                            });
-                        } else {
-                            addBubble("assistant", "Location not found on OneMap.");
-                            restartMicAfterReply();
-                        }
+                        addBubble("assistant", "Location not found on OneMap.");
+                        restartMicAfterReply();
                         return;
                     }
 
-                    showStreetSearchResult(searchData.results[0]);
+                    var best = searchData.results[0];
+                    var dispName = best.building || best.address;
+                    var distInfo = best.distance_m != null
+                        ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)"
+                        : "";
+
+                    scannedAddr = best.address;
+                    addBubble("assistant", dispName + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
+
+                    detectLang(dispName);
+                    speak(dispName, restartMicAfterReply);
                 });
             });
         });
-    }
-
-    function showStreetSearchResult(best) {
-        var dispName = best.building || best.address;
-        var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
-
-        scannedAddr = best.address;
-        addBubble("assistant", "📍 " + dispName + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
-
-        detectLang(dispName);
-        speak(dispName, restartMicAfterReply);
     }
 
     renderLangBar();
@@ -1750,11 +1666,11 @@
     addBubble(
         "assistant",
         uiText("ready") + " " + mode + ".\n" +
-        "1️⃣ " + uiText("pick_language") + "\n" +
-        "2️⃣ " + uiText("tap_mic_once") + "\n" +
-        "3️⃣ " + uiText("scan_label") + "\n" +
-        "4️⃣ " + uiText("scan_street") + "\n" +
-        "5️⃣ " + uiText("ask_route") + "\n" +
-        "6️⃣ " + uiText("rain_popup_note")
+        "1. " + uiText("pick_language") + "\n" +
+        "2. " + uiText("tap_mic_once") + "\n" +
+        "3. " + uiText("scan_label") + "\n" +
+        "4. " + uiText("scan_street") + "\n" +
+        "5. " + uiText("ask_route") + "\n" +
+        "6. " + uiText("rain_popup_note")
     );
 })();
