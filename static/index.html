@@ -52,9 +52,6 @@
         .anav-dot{width:6px;height:6px;border-radius:50%;background:#4CAF50;animation:pulse 1s infinite}
         .mf{border-radius:10px;overflow:hidden;margin-bottom:10px;border:2px solid #E31837}
         .mf iframe{display:block;border:0}
-        .anav-btns{display:flex;gap:6px}
-        .anav-btns button{flex:1;padding:10px 6px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
-        .bg{background:#4285F4;color:#fff}.bw{background:#33CCFF;color:#000}
         .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
         .sb span{color:#E31837;font-size:11px;font-weight:600}
         .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
@@ -91,7 +88,7 @@
     <div class="lang-bar" id="langBar"></div>
     <div class="loc-bar no-gps" id="locBar">
         <div class="loc-dot"></div>
-        <div><div class="loc-label">YOUR LOCATION</div><div class="loc-addr" id="locAddr">Locating...</div></div>
+        <div><div class="loc-label">DRIVER LOCATION</div><div class="loc-addr" id="locAddr">Fetching Singapore address...</div></div>
     </div>
     <div class="chips" id="chips"></div>
     <div class="chat" id="chat"></div>
@@ -105,10 +102,10 @@
         <div class="ar">
             <button class="vb" id="voiceBtn"><span>🎙️</span><span>TAP TO SPEAK</span></button>
             <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
-            <button class="plb" id="photoBtn"><span>🛣️</span><span>UPLOAD</span></button>
+            <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
             <button class="nvb" id="navBtn"><span>🚗</span><span>NAV</span></button>
         </div>
-        <input type="file" id="cameraIn" accept="image/*" style="display:none">
+        <input type="file" id="cameraIn" accept="image/*" capture="environment" style="display:none">
         <input type="file" id="photoIn" accept="image/*" style="display:none">
     </div>
 </div>
