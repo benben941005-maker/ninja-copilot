@@ -78,7 +78,16 @@
     var micLabel = document.getElementById("micLabel");
     var locBar = document.getElementById("locBar"), locAddr = document.getElementById("locAddr");
     var langBar = document.getElementById("langBar"), chipsEl = document.getElementById("chips");
-    var cameraIn = document.getElementById("cameraIn"), photoIn = document.getElementById("photoIn");
+    var cameraIn = document.getElementById("cameraIn");
+    var galleryIn = document.getElementById("galleryIn");
+    var streetCameraIn = document.getElementById("streetCameraIn");
+    var streetGalleryIn = document.getElementById("streetGalleryIn");
+    var scanPicker = document.getElementById("scanPicker");
+    var scanPickerTitle = document.getElementById("scanPickerTitle");
+    var pickCamera = document.getElementById("pickCamera");
+    var pickGallery = document.getElementById("pickGallery");
+    var pickCancel = document.getElementById("pickCancel");
+    var currentPickerMode = null; // "scan" or "street"
 
     function currentLang() {
         return LANGUAGES[selectedLang];
@@ -1247,7 +1256,39 @@
         var div = document.createElement("div");
         div.id = "routeCard";
 
-        var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
+        // --- Build Google Maps embed URL ---
+        var mapHtml = "";
+        if (route.dest_lat != null && route.dest_lng != null) {
+            var mapSrc;
+            if (gpsPos) {
+                mapSrc = "https://www.google.com/maps/embed/v1/directions"
+                    + "?key=" + (window.__GMAPS_EMBED_KEY || "")
+                    + "&origin=" + gpsPos.lat + "," + gpsPos.lng
+                    + "&destination=" + route.dest_lat + "," + route.dest_lng
+                    + "&mode=driving";
+            }
+            // Fallback: use plain Google Maps link as embed if no embed key
+            if (!window.__GMAPS_EMBED_KEY) {
+                var destParam = route.dest_display
+                    ? encodeURIComponent(route.dest_display)
+                    : route.dest_lat + "," + route.dest_lng;
+                mapSrc = gpsPos
+                    ? "https://maps.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng + "&daddr=" + destParam + "&output=embed"
+                    : "https://maps.google.com/maps?q=" + destParam + "&z=16&output=embed";
+            }
+
+            mapHtml = '<div class="anav">'
+                + '<div class="anav-title"><div class="anav-dot"></div>NAVIGATING' + (route.dest_display ? " — " + esc(route.dest_display) : "") + '</div>'
+                + '<div class="mf"><iframe src="' + mapSrc + '" width="100%" height="200" allowfullscreen loading="lazy" style="border:0"></iframe></div>'
+                + '<div style="display:flex;gap:6px;margin-top:6px;">'
+                + '<button id="rGmaps" style="flex:1;padding:10px;border-radius:8px;border:none;background:#4285F4;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🗺 Open Google Maps</button>'
+                + '<button id="rWaze" style="flex:1;padding:10px;border-radius:8px;border:none;background:#33CCFF;color:#000;font-size:12px;font-weight:700;cursor:pointer;">🚗 Open Waze</button>'
+                + '</div>'
+                + '</div>';
+        }
+
+        var html = mapHtml;
+        html += '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
         html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 ' + esc(route.summary || "") + '</div>';
 
         route.steps.forEach(function (s, i) {
@@ -1268,6 +1309,31 @@
             unlockSpeech();
             speakCurrentStepIfNeeded(true);
         });
+
+        // Wire up external map buttons
+        if (route.dest_lat != null && route.dest_lng != null) {
+            var gmapsBtn = document.getElementById("rGmaps");
+            var wazeBtn = document.getElementById("rWaze");
+
+            if (gmapsBtn) {
+                gmapsBtn.addEventListener("click", function () {
+                    var destParam = route.dest_display
+                        ? encodeURIComponent(route.dest_display)
+                        : route.dest_lat + "," + route.dest_lng;
+                    var url = gpsPos
+                        ? "https://www.google.com/maps/dir/" + gpsPos.lat + "," + gpsPos.lng + "/" + destParam
+                        : "https://www.google.com/maps/search/" + destParam;
+                    window.open(url, "_blank");
+                });
+            }
+
+            if (wazeBtn) {
+                wazeBtn.addEventListener("click", function () {
+                    var url = "https://waze.com/ul?ll=" + route.dest_lat + "," + route.dest_lng + "&navigate=yes";
+                    window.open(url, "_blank");
+                });
+            }
+        }
     }
 
     function getIcon(t, m) {
@@ -1710,16 +1776,38 @@
 
     scanBtn.addEventListener("click", function () {
         unlockSpeech();
-        cameraIn.click();
+        currentPickerMode = "scan";
+        scanPickerTitle.textContent = "📷 Scan Parcel Label";
+        scanPicker.style.display = "block";
     });
 
     photoBtn.addEventListener("click", function () {
         unlockSpeech();
-        photoIn.click();
+        currentPickerMode = "street";
+        scanPickerTitle.textContent = "🛣️ Identify Street / Location";
+        scanPicker.style.display = "block";
+    });
+
+    pickCamera.addEventListener("click", function () {
+        scanPicker.style.display = "none";
+        if (currentPickerMode === "scan") cameraIn.click();
+        else streetCameraIn.click();
+    });
+
+    pickGallery.addEventListener("click", function () {
+        scanPicker.style.display = "none";
+        if (currentPickerMode === "scan") galleryIn.click();
+        else streetGalleryIn.click();
+    });
+
+    pickCancel.addEventListener("click", function () {
+        scanPicker.style.display = "none";
     });
 
     cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-    photoIn.addEventListener("change", function () { handleStreetScan(photoIn); });
+    galleryIn.addEventListener("change", function () { handleScan(galleryIn); });
+    streetCameraIn.addEventListener("change", function () { handleStreetScan(streetCameraIn); });
+    streetGalleryIn.addEventListener("change", function () { handleStreetScan(streetGalleryIn); });
 
     navBtnEl.addEventListener("click", function () {
         unlockSpeech();
