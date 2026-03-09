@@ -92,14 +92,12 @@ def geocode():
             })
 
         r = results[0]
-
         block = r.get("BLOCK", "")
         road = r.get("ROAD", "")
         building = r.get("BUILDINGNAME", "")
         postal = r.get("POSTALCODE", "")
 
         parts = []
-
         if building and building != "NIL":
             parts.append(building)
 
@@ -112,18 +110,10 @@ def geocode():
         else:
             parts.append("Singapore")
 
-        nice_address = ", ".join(parts)
-
-        return jsonify({
-            "address": nice_address,
-            "raw": r
-        })
+        return jsonify({"address": ", ".join(parts), "raw": r})
 
     except Exception as e:
-        return jsonify({
-            "address": None,
-            "error": str(e)
-        })
+        return jsonify({"address": None, "error": str(e)})
 
 
 # =========================================================
@@ -137,7 +127,6 @@ def address_to_latlng():
             return jsonify({"error": "Missing address"}), 400
 
         token = get_onemap_token()
-
         resp = requests.get(
             "https://www.onemap.gov.sg/api/common/elastic/search",
             params={
@@ -153,16 +142,10 @@ def address_to_latlng():
         results = data.get("results", [])
 
         if not results:
-            return jsonify({
-                "error": "Address not found",
-                "lat": None,
-                "lng": None
-            })
+            return jsonify({"error": "Address not found", "lat": None, "lng": None})
 
         r = results[0]
-
         display_parts = []
-
         building = r.get("BUILDING")
         address_line = r.get("ADDRESS")
         postal = r.get("POSTAL")
@@ -181,16 +164,29 @@ def address_to_latlng():
         })
 
     except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "lat": None,
-            "lng": None
-        })
+        return jsonify({"error": str(e), "lat": None, "lng": None})
 
 
 # =========================================================
 # ONEMAP SEARCH (POI / nearest place search)
 # =========================================================
+def _search_onemap_once(query: str):
+    token = get_onemap_token()
+    resp = requests.get(
+        "https://www.onemap.gov.sg/api/common/elastic/search",
+        params={
+            "searchVal": query,
+            "returnGeom": "Y",
+            "getAddrDetails": "Y",
+            "pageNum": 1
+        },
+        headers={"Authorization": token},
+        timeout=12
+    )
+    data = resp.json()
+    return data.get("results", [])
+
+
 @app.route("/api/onemap-search")
 def onemap_search():
     try:
@@ -202,21 +198,26 @@ def onemap_search():
         if not query:
             return jsonify({"error": "Missing q", "results": []}), 400
 
-        token = get_onemap_token()
+        trial_queries = [query]
+        ql = query.lower()
+        if "singapore" not in ql:
+            trial_queries.append(f"{query} Singapore")
+        if "haidilao" in ql and "restaurant" not in ql:
+            trial_queries.extend(["Haidilao Hot Pot", "Haidilao restaurant Singapore"])
+        elif "shell" in ql:
+            trial_queries.extend(["Shell station Singapore", "Shell petrol station"])
+        elif "toilet" in ql:
+            trial_queries.extend(["public toilet Singapore", "toilet"])
+        elif "petrol" in ql:
+            trial_queries.extend(["petrol station Singapore", "Shell petrol station"])
+        elif "restaurant" not in ql:
+            trial_queries.append(f"{query} restaurant")
 
-        resp = requests.get(
-            "https://www.onemap.gov.sg/api/common/elastic/search",
-            params={
-                "searchVal": query,
-                "returnGeom": "Y",
-                "getAddrDetails": "Y",
-                "pageNum": 1
-            },
-            headers={"Authorization": token},
-            timeout=12
-        )
-        data = resp.json()
-        raw_results = data.get("results", [])
+        raw_results = []
+        for tq in trial_queries:
+            raw_results = _search_onemap_once(tq)
+            if raw_results:
+                break
 
         results = []
         for r in raw_results:
@@ -277,7 +278,6 @@ def route():
             return jsonify({"error": "Missing coordinates"}), 400
 
         token = get_onemap_token()
-
         resp = requests.get(
             "https://www.onemap.gov.sg/api/public/routingsvc/route",
             params={
@@ -303,15 +303,15 @@ def route():
             distance = item[2] if len(item) > 2 and isinstance(item[2], (int, float)) else 0
             duration = item[3] if len(item) > 3 and isinstance(item[3], (int, float)) else 0
 
-            lat = None
-            lng = None
+            ilat = None
+            ilng = None
             if len(item) > 5:
                 try:
-                    lat = float(item[4])
-                    lng = float(item[5])
+                    ilat = float(item[4])
+                    ilng = float(item[5])
                 except Exception:
-                    lat = None
-                    lng = None
+                    ilat = None
+                    ilng = None
 
             if text:
                 steps.append({
@@ -320,8 +320,8 @@ def route():
                     "duration": round(duration),
                     "type": "instruction",
                     "modifier": "",
-                    "lat": lat,
-                    "lng": lng
+                    "lat": ilat,
+                    "lng": ilng
                 })
 
         total_dist = round(route_summary.get("total_distance", 0))
@@ -336,10 +336,7 @@ def route():
         })
 
     except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "steps": []
-        })
+        return jsonify({"error": str(e), "steps": []})
 
 
 # =========================================================
@@ -363,20 +360,12 @@ def weather():
 
         resp = requests.get(
             "https://api.weatherapi.com/v1/current.json",
-            params={
-                "key": WEATHER_API_KEY,
-                "q": f"{lat},{lng}"
-            },
+            params={"key": WEATHER_API_KEY, "q": f"{lat},{lng}"},
             timeout=10
         )
         data = resp.json()
 
-        condition_text = str(
-            data.get("current", {})
-            .get("condition", {})
-            .get("text", "")
-        ).lower()
-
+        condition_text = str(data.get("current", {}).get("condition", {}).get("text", "")).lower()
         rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
         is_rain = any(k in condition_text for k in rain_keywords)
 
@@ -389,11 +378,7 @@ def weather():
         })
 
     except Exception as e:
-        return jsonify({
-            "status": "weather_error",
-            "is_rain": False,
-            "description": str(e)
-        })
+        return jsonify({"status": "weather_error", "is_rain": False, "description": str(e)})
 
 
 # =========================================================
@@ -405,10 +390,8 @@ def chat():
         data = request.json or {}
         system = data.get("system", "")
         messages = data.get("messages", [])
-
         reply = call_claude(system, messages)
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -423,10 +406,8 @@ def scan():
         system = data.get("system", "")
         image_base64 = data.get("image_base64", "")
         ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
-
         reply = call_claude_vision(system, image_base64, ocr_prompt)
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -436,10 +417,7 @@ def scan():
 # =========================================================
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
-    return jsonify({
-        "error": "OPENAI_API_KEY not configured. Use browser speech recognition fallback.",
-        "text": ""
-    })
+    return jsonify({"error": "OPENAI_API_KEY not configured. Use browser speech recognition fallback.", "text": ""})
 
 
 # =========================================================
