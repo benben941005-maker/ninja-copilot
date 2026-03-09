@@ -1,15 +1,15 @@
 import os
 import time
+import math
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder=".", static_url_path="")
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
 ONEMAP_EMAIL = os.environ.get("ONEMAP_EMAIL", "")
 ONEMAP_PASSWORD = os.environ.get("ONEMAP_PASSWORD", "")
-AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
 
 _onemap_token = None
 _onemap_token_expiry = 0
@@ -17,12 +17,12 @@ _onemap_token_expiry = 0
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    return send_from_directory("static", "index.html")
 
 
-@app.route("/<path:path>")
-def static_files(path):
-    return send_from_directory(".", path)
+@app.route("/static/<path:path>")
+def serve_static(path):
+    return send_from_directory("static", path)
 
 
 # =========================================================
@@ -127,7 +127,7 @@ def geocode():
 
 
 # =========================================================
-# FORWARD GEOCODE / SEARCH
+# FORWARD GEOCODE / ADDRESS LOOKUP
 # =========================================================
 @app.route("/api/address-to-latlng")
 def address_to_latlng():
@@ -189,6 +189,80 @@ def address_to_latlng():
 
 
 # =========================================================
+# ONEMAP SEARCH (POI / nearest place search)
+# =========================================================
+@app.route("/api/onemap-search")
+def onemap_search():
+    try:
+        query = request.args.get("q", "").strip()
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        limit = int(request.args.get("limit", 3))
+
+        if not query:
+            return jsonify({"error": "Missing q", "results": []}), 400
+
+        token = get_onemap_token()
+
+        resp = requests.get(
+            "https://www.onemap.gov.sg/api/common/elastic/search",
+            params={
+                "searchVal": query,
+                "returnGeom": "Y",
+                "getAddrDetails": "Y",
+                "pageNum": 1
+            },
+            headers={"Authorization": token},
+            timeout=12
+        )
+        data = resp.json()
+        raw_results = data.get("results", [])
+
+        results = []
+        for r in raw_results:
+            try:
+                rlat = float(r["LATITUDE"])
+                rlng = float(r["LONGITUDE"])
+            except Exception:
+                continue
+
+            building = r.get("BUILDING", "")
+            address = r.get("ADDRESS", "")
+            postal = r.get("POSTAL", "")
+
+            distance_m = None
+            if lat and lng:
+                try:
+                    lat1 = float(lat)
+                    lng1 = float(lng)
+                    R = 6371000
+                    dlat = math.radians(rlat - lat1)
+                    dlng = math.radians(rlng - lng1)
+                    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(rlat)) * math.sin(dlng / 2) ** 2
+                    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                    distance_m = int(R * c)
+                except Exception:
+                    distance_m = None
+
+            results.append({
+                "building": building,
+                "address": address,
+                "postal": postal,
+                "lat": rlat,
+                "lng": rlng,
+                "distance_m": distance_m
+            })
+
+        if lat and lng:
+            results.sort(key=lambda x: x["distance_m"] if x["distance_m"] is not None else 999999999)
+
+        return jsonify({"results": results[:limit]})
+
+    except Exception as e:
+        return jsonify({"error": str(e), "results": []}), 500
+
+
+# =========================================================
 # ROUTE
 # =========================================================
 @app.route("/api/route")
@@ -225,8 +299,6 @@ def route():
 
         steps = []
         for item in instructions:
-            # OneMap usually returns arrays like:
-            # [instruction_text, road_name, distance, time, lat, lng]
             text = item[0] if len(item) > 0 else ""
             distance = item[2] if len(item) > 2 and isinstance(item[2], (int, float)) else 0
             duration = item[3] if len(item) > 3 and isinstance(item[3], (int, float)) else 0
