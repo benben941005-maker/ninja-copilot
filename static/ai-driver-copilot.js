@@ -1,11 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-//  NINJA CO-PILOT — Multilanguage + Rain Alert + ETA Notify
-//  Safari/desktop: SpeechRecognition
-//  Chrome iOS: MediaRecorder → backend transcribe
-//  Scan label → extract phone
-//  In-app live navigation
-//  ETA notify + rain delay popup
-//  SMS / WhatsApp customer messages ALWAYS in English
+//  NINJA CO-PILOT
+//  - strict language alignment
+//  - scan / route / ETA notify
+//  - 5-minute arrival popup
+//  - customer message ALWAYS in English
 // ═══════════════════════════════════════════════════════════
 
 (function () {
@@ -14,27 +12,41 @@
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
     var ETA_NOTIFY_SECONDS = 300; // 5 min
     var ETA_NOTIFY_METERS = 1200; // fallback
-    var DEFAULT_CUSTOMER_PHONE = "88918958";
+    var DEFAULT_CUSTOMER_PHONE = "";
 
-    // ─── Platform detection ───
     var ua = navigator.userAgent.toLowerCase();
     var isIOS = /iphone|ipad|ipod/.test(ua);
     var hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
     var useRecorder = !hasSR;
 
     var LANGUAGES = [
-        { label: "EN",     flag: "🇬🇧", code: "en-SG",      ai: "English" },
-        { label: "中文",    flag: "🇨🇳", code: "zh-CN",      ai: "Chinese Simplified" },
-        { label: "繁體",    flag: "🇹🇼", code: "zh-TW",      ai: "Chinese Traditional" },
-        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK",      ai: "Cantonese" },
-        { label: "Malay",  flag: "🇲🇾", code: "ms-MY",      ai: "Malay" },
-        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN",      ai: "Tamil" },
-        { label: "ไทย",    flag: "🇹🇭", code: "th-TH",      ai: "Thai" },
-        { label: "Việt",   flag: "🇻🇳", code: "vi-VN",      ai: "Vietnamese" },
-        { label: "Indo",   flag: "🇮🇩", code: "id-ID",      ai: "Bahasa Indonesia" },
-        { label: "한국어",   flag: "🇰🇷", code: "ko-KR",      ai: "Korean" },
-        { label: "日本語",   flag: "🇯🇵", code: "ja-JP",      ai: "Japanese" }
+        { label: "EN",     flag: "🇬🇧", code: "en-SG", ai: "English" },
+        { label: "中文",    flag: "🇨🇳", code: "zh-CN", ai: "Chinese Simplified" },
+        { label: "繁體",    flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
+        { label: "廣東話",  flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
+        { label: "Malay",  flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
+        { label: "Tamil",  flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
+        { label: "ไทย",    flag: "🇹🇭", code: "th-TH", ai: "Thai" },
+        { label: "Việt",   flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
+        { label: "Indo",   flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
+        { label: "한국어",   flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
+        { label: "日本語",   flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
     ];
+
+    var LANG_TTS = {
+        "zh-CN": ["zh-CN", "cmn-CN", "zh"],
+        "zh-TW": ["zh-TW", "cmn-TW", "zh-Hant", "zh"],
+        "zh-HK": ["zh-HK", "yue-HK", "zh-yue", "yue", "zh-Hant-HK"],
+        "ms": ["ms-MY", "ms"],
+        "ta": ["ta-IN", "ta"],
+        "id": ["id-ID", "id"],
+        "th": ["th-TH", "th"],
+        "vi": ["vi-VN", "vi"],
+        "fil": ["fil-PH", "tl-PH", "fil"],
+        "ko": ["ko-KR", "ko"],
+        "ja": ["ja-JP", "ja"],
+        "en": ["en-SG", "en-US", "en-GB", "en"]
+    };
 
     var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
     var isListening = false, recognition = null, gpsPos = null, selectedLang = 0;
@@ -44,21 +56,20 @@
     var ttsTimer = null;
     var speechUnlocked = false;
 
-    // route / nav state
     var activeRoute = null;
     var activeStepIndex = 0;
     var lastSpokenStep = -1;
     var navActive = false;
     var lastGpsCheckAt = 0;
 
-    // customer / notify state
     var customerPhone = DEFAULT_CUSTOMER_PHONE;
     var notifyShownForRoute = false;
     var arrivalPromptSpoken = false;
     var rainAlertShownForRoute = false;
     var currentWeatherInfo = null;
 
-    // DOM
+    var lastDetectedLang = "en-SG";
+
     var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
     var sendBtn = document.getElementById("sendBtn"), voiceBtn = document.getElementById("voiceBtn");
     var scanBtn = document.getElementById("scanBtn"), photoBtn = document.getElementById("photoBtn");
@@ -73,13 +84,35 @@
         return LANGUAGES[selectedLang];
     }
 
-    function isCantoneseMode() {
-        return currentLang().ai === "Cantonese";
+    function syncReplyLanguageToSelection() {
+        lastDetectedLang = currentLang().code;
     }
 
-    function isChineseLikeMode() {
-        var ai = currentLang().ai;
-        return ai === "Chinese Simplified" || ai === "Chinese Traditional" || ai === "Cantonese";
+    function isCantoneseMode() {
+        return currentLang().code === "zh-HK";
+    }
+
+    function isTraditionalChineseMode() {
+        return currentLang().code === "zh-TW";
+    }
+
+    function isSimplifiedChineseMode() {
+        return currentLang().code === "zh-CN";
+    }
+
+    function getPreferredReplyLanguage() {
+        var code = currentLang().code;
+        if (code === "zh-HK") return "Cantonese";
+        if (code === "zh-TW") return "Traditional Chinese";
+        if (code === "zh-CN") return "Simplified Chinese";
+        if (code === "ms-MY") return "Malay";
+        if (code === "ta-IN") return "Tamil";
+        if (code === "th-TH") return "Thai";
+        if (code === "vi-VN") return "Vietnamese";
+        if (code === "id-ID") return "Bahasa Indonesia";
+        if (code === "ko-KR") return "Korean";
+        if (code === "ja-JP") return "Japanese";
+        return "English";
     }
 
     function getSysPrompt() {
@@ -91,29 +124,67 @@
         if (isCantoneseMode()) {
             replyRule = [
                 "IMPORTANT: Reply ONLY in Cantonese.",
-                "Use Hong Kong Cantonese grammar and wording.",
+                "Use Hong Kong Cantonese wording and grammar.",
                 "Use Traditional Chinese characters.",
-                "Never reply in Mandarin.",
-                "Never reply in standard written Chinese."
+                "Do NOT reply in Mandarin.",
+                "Do NOT reply in simplified Chinese.",
+                "Do NOT translate into standard written Chinese."
+            ].join(" ");
+        } else if (isTraditionalChineseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Traditional Chinese.",
+                "Use Traditional Chinese characters only.",
+                "Do NOT reply in Simplified Chinese.",
+                "Do NOT reply in Cantonese unless the driver switches to Cantonese."
+            ].join(" ");
+        } else if (isSimplifiedChineseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Simplified Chinese.",
+                "Use Simplified Chinese characters only.",
+                "Do NOT reply in Traditional Chinese.",
+                "Do NOT reply in Cantonese unless the driver switches language."
             ].join(" ");
         } else {
-            replyRule = "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+            replyRule = "IMPORTANT: Reply ONLY in " + getPreferredReplyLanguage() + ". Use natural local wording. Do not switch language.";
         }
 
         return [
             "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
             replyRule,
+            "If the driver speaks in a specific language variant, reply in exactly that same language variant.",
+            "Never switch to another Chinese variant unless the user switches first.",
             "RULES: Under 60 words. Professional. Action first.",
             "",
-            "NAVIGATION REQUESTS:",
-            "When driver asks to go to ANY place (restaurant, petrol station, toilet, shop, etc.):",
-            "- Find the nearest one based on driver's current location",
-            "- You MUST include this exact line in your reply:",
-            "  ADDRESS: [full address with street and postal code]",
-            "- Without the ADDRESS: line, navigation cannot start",
+            "NAVIGATION — TWO FORMATS:",
+            "",
+            "FORMAT 1 — SEARCH (for POI/business/place names):",
+            "When driver asks for a restaurant, petrol station, toilet, shop, mall, or ANY named business/place:",
+            "- You MUST reply with: SEARCH: <place name in English>",
+            "- ALWAYS use the English/romanized brand name for SEARCH, even if driver speaks Chinese/other language.",
+            "- Example: driver says '带我去海底捞' → reply with SEARCH: haidilao",
+            "- Example: driver says '去麦当劳' → reply with SEARCH: mcdonalds",
+            "- Example: driver says 'nearest Shell station' → reply with SEARCH: shell",
+            "- Example: driver says 'nearest toilet' → reply with SEARCH: toilet",
+            "- Example: driver says 'go to Jurong Point' → reply with SEARCH: Jurong Point",
+            "- Example: driver says 'KFC nearby' → reply with SEARCH: KFC",
+            "- Example: driver says 'nearest petrol' → reply with SEARCH: petrol station",
+            "- Keep SEARCH term short: just the brand/place name, 1-3 words.",
+            "- Do NOT guess or invent a specific street address for businesses.",
+            "- The system will find the real nearest location automatically.",
+            "",
+            "FORMAT 2 — ADDRESS (for specific known addresses only):",
+            "When driver provides a FULL specific street address or postal code:",
+            "- Reply with: ADDRESS: <the full address>",
+            "- Example: driver says 'go to 1 Jurong West Central 2' → ADDRESS: 1 Jurong West Central 2 Singapore",
+            "- Example: driver says 'block 214 Bedok' → ADDRESS: Block 214 Bedok North Street 1 Singapore",
+            "",
+            "CRITICAL: NEVER guess a specific street address for a business name.",
+            "If driver asks for a business/POI, ALWAYS use SEARCH: format.",
+            "If driver gives a full address, use ADDRESS: format.",
             "",
             "PARTIAL ADDRESSES:",
-            "If driver says just a block number like 'block 214' or 'blk 214', use current location to form full address."
+            "If driver says only a block number like '214', 'block 214', or 'blk 214',",
+            "combine it with current location area and return ADDRESS: Block 214 <nearest street from current location> Singapore"
         ].join("\n");
     }
 
@@ -129,19 +200,36 @@
         ].join("\n");
     }
 
+    function getStreetPrompt() {
+        return [
+            "You are a Singapore street/location identifier for delivery drivers.",
+            "Analyze this photo taken from a vehicle or street level in Singapore.",
+            "Look for ANY location clues:",
+            "- Road signs (blue/green signs with street names)",
+            "- Building names, condo names, mall names",
+            "- Block/HDB numbers visible on buildings",
+            "- Bus stop numbers or MRT station names",
+            "- Shopfront names or signage",
+            "- Expressway signs (PIE, CTE, AYE, ECP, etc.)",
+            "- Landmark structures",
+            "- Postal codes on any signage",
+            "",
+            "Driver is currently near: " + (currentStreet || "unknown") + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "") + ".",
+            "",
+            "Return JSON ONLY with what you can identify:",
+            '{"road_name":"street/road name if visible or null","building":"building/condo/mall name or null","block":"block/HDB number or null","expressway":"expressway name or null","landmark":"any recognizable landmark or null","bus_stop":"bus stop number or null","best_search":"single best search term for Google Maps to find this location","confidence":"high/medium/low","clues":"brief description of what you saw"}'
+        ].join("\n");
+    }
+
     var CHIPS = [
         "Cannot find address",
         "No answer",
         "Traffic jam",
         "Damaged parcel",
         "Nearest petrol station",
-        "Nearest toilet",
-        "Set customer phone 88918958"
+        "Nearest toilet"
     ];
 
-    // ═══════════════════════════════════════════════════════
-    //  UI TEXT
-    // ═══════════════════════════════════════════════════════
     function uiText(key) {
         var ai = currentLang().ai;
 
@@ -150,15 +238,16 @@
             pick_language: "选择语言",
             tap_mic_once: "按一下 🎙️",
             scan_label: "扫描包裹标签来读取电话号码",
+            scan_street: "拍摄路牌识别街道位置",
             ask_route: "输入目的地或说出附近地点",
             rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
-            route_starting: "🗺 现在开始导航...",
+            route_starting: "现在开始导航...",
             route_not_found: "找不到路线。",
-            notify_arrival: "📩 快到了，要通知客户吗？",
+            notify_arrival: "快到了，要通知客户吗？",
             eta_about: "预计大约 ",
             eta_minutes: " 分钟内到",
             close: "关闭",
-            rain_near_dest: "☔ 目的地附近下雨，要通知客户延迟吗？",
+            rain_near_dest: "目的地附近下雨，要通知客户延迟吗？",
             detected_weather: "检测到目的地天气：",
             about_5_min: "还有大约五分钟到，要通知客户吗？",
             raining_prompt: "目的地附近正在下雨，要通知客户可能会稍微延迟吗？",
@@ -176,15 +265,16 @@
             pick_language: "揀語言",
             tap_mic_once: "撳一下 🎙️",
             scan_label: "掃描包裹標籤讀取電話號碼",
+            scan_street: "影路牌識別街道位置",
             ask_route: "輸入目的地或者講附近地點",
             rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
-            route_starting: "🗺 而家開始導航...",
+            route_starting: "而家開始導航...",
             route_not_found: "搵唔到路線。",
-            notify_arrival: "📩 就快到，要通知客戶嗎？",
+            notify_arrival: "就快到，要通知客戶嗎？",
             eta_about: "預計大約 ",
             eta_minutes: " 分鐘內到",
             close: "關閉",
-            rain_near_dest: "☔ 目的地附近落雨，要通知客戶延遲嗎？",
+            rain_near_dest: "目的地附近落雨，要通知客戶延遲嗎？",
             detected_weather: "檢測到目的地天氣：",
             about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
             raining_prompt: "目的地附近正喺落雨，要通知客戶可能會遲少少嗎？",
@@ -202,15 +292,16 @@
             pick_language: "Pick language",
             tap_mic_once: "Tap 🎙️ once",
             scan_label: "Scan parcel label to capture phone",
+            scan_street: "Snap road sign to identify location",
             ask_route: "Ask for a route",
             rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
-            route_starting: "🗺 Getting directions...",
+            route_starting: "Getting directions...",
             route_not_found: "Route not found.",
-            notify_arrival: "📩 Near destination. Notify customer?",
+            notify_arrival: "Near destination. Notify customer?",
             eta_about: "Estimated arrival in about ",
             eta_minutes: " minutes",
             close: "Close",
-            rain_near_dest: "☔ Rain near destination. Send delay notice to customer?",
+            rain_near_dest: "Rain near destination. Send delay notice to customer?",
             detected_weather: "Detected destination weather: ",
             about_5_min: "About 5 minutes to arrival. Notify customer?",
             raining_prompt: "It is raining near the destination. Send a delay notice to the customer?",
@@ -231,9 +322,6 @@
         return map[key] || en[key] || key;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  CANTONESE SHAPING
-    // ═══════════════════════════════════════════════════════
     function normalizeCantoneseText(text) {
         var t = String(text || "").trim();
         if (!t) return t;
@@ -285,9 +373,6 @@
         return t;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  PHONE / MESSAGES
-    // ═══════════════════════════════════════════════════════
     function sanitizePhone(raw) {
         var s = String(raw || "").replace(/[^\d+]/g, "");
         if (!s) return "";
@@ -324,9 +409,7 @@
     function openSms(phone, message) {
         var p = String(phone || "");
         var body = encodeURIComponent(message || "");
-        var url = isIOS
-            ? "sms:" + p + "&body=" + body
-            : "sms:" + p + "?body=" + body;
+        var url = isIOS ? "sms:" + p + "&body=" + body : "sms:" + p + "?body=" + body;
         window.location.href = url;
     }
 
@@ -336,9 +419,6 @@
         window.open("https://wa.me/" + p + "?text=" + text, "_blank");
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  POPUPS
-    // ═══════════════════════════════════════════════════════
     function removeArrivalCard() { removeEl("arrivalNotifyCard"); }
     function removeRainCard() { removeEl("rainDelayCard"); }
 
@@ -346,9 +426,10 @@
         removeArrivalCard();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
-        var msg = getArrivalMessage();
+        var msg = getArrivalMessage(); // English only
         var title = uiText("notify_arrival");
         var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
+        var hasPhone = !!customerPhone;
 
         var div = document.createElement("div");
         div.id = "arrivalNotifyCard";
@@ -356,11 +437,12 @@
             '<div style="background:rgba(227,24,55,0.10);border:1px solid rgba(227,24,55,0.28);border-radius:14px;padding:12px;margin:8px 0;">' +
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(etaText) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
+                '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
-                    '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
-                    '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    (hasPhone ? '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
+                    (hasPhone ? '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
                     '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
@@ -368,12 +450,15 @@
         chatEl.appendChild(div);
         scrollDown();
 
-        document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
-            openSms(getCustomerPhoneForSms(), msg);
-        });
-        document.getElementById("arrivalWaBtn").addEventListener("click", function () {
-            openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
-        });
+        if (hasPhone) {
+            document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
+                openSms(getCustomerPhoneForSms(), msg);
+            });
+            document.getElementById("arrivalWaBtn").addEventListener("click", function () {
+                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+            });
+        }
+
         document.getElementById("arrivalCloseBtn").addEventListener("click", function () {
             removeArrivalCard();
         });
@@ -382,9 +467,10 @@
     function showRainDelayCard(weatherInfo) {
         removeRainCard();
 
-        var msg = getRainDelayMessage();
+        var msg = getRainDelayMessage(); // English only
         var title = uiText("rain_near_dest");
         var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
+        var hasPhone = !!customerPhone;
 
         var div = document.createElement("div");
         div.id = "rainDelayCard";
@@ -392,11 +478,12 @@
             '<div style="background:rgba(30,144,255,0.10);border:1px solid rgba(30,144,255,0.30);border-radius:14px;padding:12px;margin:8px 0;">' +
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(detail) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
+                '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
-                    '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
-                    '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    (hasPhone ? '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
+                    (hasPhone ? '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
                     '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
@@ -404,20 +491,20 @@
         chatEl.appendChild(div);
         scrollDown();
 
-        document.getElementById("rainSmsBtn").addEventListener("click", function () {
-            openSms(getCustomerPhoneForSms(), msg);
-        });
-        document.getElementById("rainWaBtn").addEventListener("click", function () {
-            openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
-        });
+        if (hasPhone) {
+            document.getElementById("rainSmsBtn").addEventListener("click", function () {
+                openSms(getCustomerPhoneForSms(), msg);
+            });
+            document.getElementById("rainWaBtn").addEventListener("click", function () {
+                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+            });
+        }
+
         document.getElementById("rainCloseBtn").addEventListener("click", function () {
             removeRainCard();
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  TTS
-    // ═══════════════════════════════════════════════════════
     function unlockSpeech() {
         if (!window.speechSynthesis || speechUnlocked) return;
         try {
@@ -431,21 +518,79 @@
         } catch (e) {}
     }
 
-    function pickVoice(langCode) {
+    function pickVoiceByTargets(targets) {
         if (!window.speechSynthesis) return null;
         var voices = window.speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
 
         var exact = voices.find(function (v) {
-            return (v.lang || "").toLowerCase() === langCode.toLowerCase();
+            var lang = (v.lang || "").toLowerCase();
+            return targets.some(function (t) {
+                return lang === t.toLowerCase();
+            });
         });
         if (exact) return exact;
 
-        var shortCode = langCode.split("-")[0].toLowerCase();
         var partial = voices.find(function (v) {
-            return (v.lang || "").toLowerCase().indexOf(shortCode) === 0;
+            var lang = (v.lang || "").toLowerCase();
+            return targets.some(function (t) {
+                return lang.indexOf(t.toLowerCase()) === 0;
+            });
         });
-        return partial || null;
+        if (partial) return partial;
+
+        return null;
+    }
+
+    function pickCantoneseVoice() {
+        if (!window.speechSynthesis) return null;
+        var voices = window.speechSynthesis.getVoices() || [];
+        if (!voices.length) return null;
+
+        return voices.find(function (v) {
+            var s = ((v.name || "") + " " + (v.lang || "")).toLowerCase();
+            return /yue|cantonese|hong kong|zh-hk/.test(s);
+        }) || null;
+    }
+
+    function stripEmojis(t) {
+        return String(t || "")
+            .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
+            .replace(/[\u{2600}-\u{27BF}]/gu, "")
+            .replace(/[\u{FE00}-\u{FEFF}]/gu, "")
+            .replace(/[\u{1F900}-\u{1FAFF}]/gu, "")
+            .replace(/[*_#\[\]]/g, "")
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function detectLang(text) {
+        var t = String(text || "");
+
+        if (currentLang().code === "zh-HK") { lastDetectedLang = "zh-HK"; return; }
+        if (currentLang().code === "zh-TW") { lastDetectedLang = "zh-TW"; return; }
+        if (currentLang().code === "zh-CN") { lastDetectedLang = "zh-CN"; return; }
+        if (currentLang().code === "ms-MY") { lastDetectedLang = "ms"; return; }
+        if (currentLang().code === "ta-IN") { lastDetectedLang = "ta"; return; }
+        if (currentLang().code === "th-TH") { lastDetectedLang = "th"; return; }
+        if (currentLang().code === "vi-VN") { lastDetectedLang = "vi"; return; }
+        if (currentLang().code === "id-ID") { lastDetectedLang = "id"; return; }
+        if (currentLang().code === "ko-KR") { lastDetectedLang = "ko"; return; }
+        if (currentLang().code === "ja-JP") { lastDetectedLang = "ja"; return; }
+
+        if (/[\u0e00-\u0e7f]/.test(t)) { lastDetectedLang = "th"; return; }
+        if (/[\uac00-\ud7af]/.test(t)) { lastDetectedLang = "ko"; return; }
+        if (/[\u3040-\u30ff]/.test(t)) { lastDetectedLang = "ja"; return; }
+        if (/[佢哋佢而家咗喺咩唔冇啦啲咁樣嗰呢度邊度搵返嚟]/.test(t)) { lastDetectedLang = "zh-HK"; return; }
+        if (/[這個那個現在時間還有讓會話點樣處理聯絡顯示導航這裡附近樓層單位]/.test(t)) { lastDetectedLang = "zh-TW"; return; }
+        if (/[这个那个现在时间还有让会话怎么处理联系显示导航这里附近楼层单位]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
+        if (/[\u4e00-\u9fff]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
+        if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(t)) { lastDetectedLang = "ms"; return; }
+        if (/\b(kamu|tidak|bisa|dengan|untuk|ya)\b/i.test(t)) { lastDetectedLang = "id"; return; }
+        if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(t)) { lastDetectedLang = "fil"; return; }
+        if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(t)) { lastDetectedLang = "vi"; return; }
+
+        lastDetectedLang = "en";
     }
 
     function speak(text, onDone) {
@@ -458,20 +603,41 @@
             window.speechSynthesis.cancel();
             clearInterval(ttsTimer);
 
-            var cleanText = String(text).trim();
+            var cleanText = stripEmojis(tuneReplyByLanguage(text));
             if (!cleanText) {
                 if (onDone) onDone();
                 return;
             }
 
+            var langKey = lastDetectedLang || currentLang().code || "en";
+            var targets = LANG_TTS[langKey] || LANG_TTS.en;
+            var chosenVoice = null;
+
+            if (langKey === "zh-HK") {
+                chosenVoice = pickVoiceByTargets(targets) || pickCantoneseVoice();
+                if (!chosenVoice) {
+                    if (onDone) onDone();
+                    return;
+                }
+            } else {
+                chosenVoice = pickVoiceByTargets(targets);
+            }
+
+            if (!chosenVoice) {
+                chosenVoice = pickVoiceByTargets(LANG_TTS.en);
+            }
+
             var u = new SpeechSynthesisUtterance(cleanText);
-            u.lang = currentLang().code;
-            u.rate = isCantoneseMode() ? 0.88 : 0.92;
+            u.rate = isCantoneseMode() ? 0.90 : 0.95;
             u.pitch = 1;
             u.volume = 1;
 
-            var chosenVoice = pickVoice(u.lang);
-            if (chosenVoice) u.voice = chosenVoice;
+            if (chosenVoice) {
+                u.voice = chosenVoice;
+                u.lang = chosenVoice.lang || currentLang().code;
+            } else {
+                u.lang = currentLang().code;
+            }
 
             u.onstart = function () {
                 isSpeaking = true;
@@ -522,9 +688,6 @@
         };
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  LANGUAGE PICKER
-    // ═══════════════════════════════════════════════════════
     function renderLangBar() {
         langBar.innerHTML = "";
         LANGUAGES.forEach(function (lang, i) {
@@ -534,6 +697,7 @@
             btn.addEventListener("click", function () {
                 unlockSpeech();
                 selectedLang = i;
+                syncReplyLanguageToSelection();
                 renderLangBar();
                 micLabel.textContent = "MIC • " + lang.flag + " " + lang.ai;
                 addBubble("assistant", "🌐 " + lang.flag + " " + lang.ai);
@@ -542,9 +706,6 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  IMAGE COMPRESSION
-    // ═══════════════════════════════════════════════════════
     function compressImage(file, cb) {
         var reader = new FileReader();
         reader.onload = function (e) {
@@ -583,9 +744,6 @@
         reader.readAsDataURL(file);
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  API
-    // ═══════════════════════════════════════════════════════
     function apiChat(text, cb) {
         fetch("/api/chat", {
             method: "POST",
@@ -615,6 +773,21 @@
             .catch(function (e) { cb(e.message); });
     }
 
+    function apiScanStreet(base64, cb) {
+        fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system: "You are a Singapore street and location identifier. Return only valid JSON.",
+                image_base64: base64,
+                ocr_prompt: getStreetPrompt()
+            })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+            .catch(function (e) { cb(e.message); });
+    }
+
     function apiTranscribe(audioBase64, cb) {
         fetch("/api/transcribe", {
             method: "POST",
@@ -636,9 +809,38 @@
             .catch(function (e) { cb(e.message); });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  MIC
-    // ═══════════════════════════════════════════════════════
+    function apiPoiSearch(query, cb) {
+        var params = "q=" + encodeURIComponent(query);
+        if (gpsPos) {
+            params += "&lat=" + gpsPos.lat + "&lng=" + gpsPos.lng;
+        }
+        params += "&limit=3";
+
+        fetch("/api/poi-search?" + params)
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cb(null, d); })
+            .catch(function (e) { cb(e.message); });
+    }
+
+    function fetchRouteByCoords(destLat, destLng, destDisplay, cb) {
+        if (!gpsPos) {
+            cb("No GPS");
+            return;
+        }
+
+        fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng + "&to_lat=" + destLat + "&to_lng=" + destLng)
+            .then(function (r) { return r.json(); })
+            .then(function (rt) {
+                if (rt && !rt.error) {
+                    rt.dest_lat = destLat;
+                    rt.dest_lng = destLng;
+                    rt.dest_display = destDisplay;
+                }
+                cb(rt.error && !rt.steps.length ? rt.error : null, rt);
+            })
+            .catch(function (e) { cb(e.message); });
+    }
+
     function toggleMic() {
         unlockSpeech();
 
@@ -648,6 +850,8 @@
         }
 
         micActive = true;
+        syncReplyLanguageToSelection();
+
         voiceBtn.classList.add("active");
         voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
         micBar.classList.add("on");
@@ -812,9 +1016,6 @@
         }, 500);
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  GPS
-    // ═══════════════════════════════════════════════════════
     function initGPS() {
         if (!navigator.geolocation) {
             locAddr.textContent = "GPS not available";
@@ -850,9 +1051,6 @@
             .catch(function () {});
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  ROUTE / NAV
-    // ═══════════════════════════════════════════════════════
     function fetchRoute(destAddr, cb) {
         if (!gpsPos) {
             cb("No GPS");
@@ -925,9 +1123,7 @@
         activeRoute.steps.forEach(function (_, i) {
             var el = document.getElementById("rs" + i);
             if (el) {
-                el.style.background = i === activeStepIndex
-                    ? "rgba(227,24,55,0.18)"
-                    : "transparent";
+                el.style.background = i === activeStepIndex ? "rgba(227,24,55,0.18)" : "transparent";
             }
         });
 
@@ -944,6 +1140,7 @@
         if (!step || !step.text) return;
 
         lastSpokenStep = activeStepIndex;
+        detectLang(step.text);
         speak(tuneReplyByLanguage(step.text));
     }
 
@@ -958,6 +1155,7 @@
 
             if (!arrivalPromptSpoken) {
                 arrivalPromptSpoken = true;
+                detectLang(uiText("about_5_min"));
                 speak(uiText("about_5_min"));
             }
 
@@ -970,6 +1168,7 @@
         if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
 
         rainAlertShownForRoute = true;
+        detectLang(uiText("raining_prompt"));
         speak(uiText("raining_prompt"));
         showRainDelayCard(currentWeatherInfo);
     }
@@ -989,7 +1188,7 @@
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
             var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
-
+            detectLang(warnText);
             speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
@@ -1022,6 +1221,7 @@
                 }, 500);
             } else {
                 navActive = false;
+                detectLang(uiText("arrived"));
                 speak(uiText("arrived"));
             }
         }
@@ -1079,9 +1279,6 @@
         return "⬆️";
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  DELIVERY CARD
-    // ═══════════════════════════════════════════════════════
     function showDeliveryCard(parsed) {
         removeEl("deliveryCard");
 
@@ -1119,9 +1316,6 @@
         scrollDown();
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  HELPERS
-    // ═══════════════════════════════════════════════════════
     function esc(s) {
         var d = document.createElement("div");
         d.textContent = s;
@@ -1172,6 +1366,7 @@
     function cleanReplyForSpeech(reply) {
         var t = String(reply || "")
             .replace(/ADDRESS:\s*.*$/im, "")
+            .replace(/SEARCH:\s*.*$/im, "")
             .replace(/PLACE:\s*.*$/im, "")
             .replace(/[•\-\*]/g, "")
             .replace(/\n+/g, ". ")
@@ -1186,11 +1381,10 @@
         return null;
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  SEND TEXT
-    // ═══════════════════════════════════════════════════════
     function sendText(text) {
         if (!text || !text.trim() || busy) return;
+
+        syncReplyLanguageToSelection();
 
         var rawText = text.trim();
 
@@ -1230,8 +1424,64 @@
             }
 
             reply = tuneReplyByLanguage(reply);
+            detectLang(reply);
             addBubble("assistant", reply);
 
+            // --- SEARCH: flow (POI/business lookup via Google Places) ---
+            var searchMatch = reply.match(/SEARCH:\s*(.+)/i);
+            if (searchMatch && searchMatch[1]) {
+                var searchQuery = searchMatch[1].trim();
+                stopLiveNavigation();
+
+                setTimeout(function () {
+                    speak(cleanReplyForSpeech(reply), function () {
+                        addBubble("assistant", "🔍 " + searchQuery + "...");
+                        showProc();
+
+                        apiPoiSearch(searchQuery, function (searchErr, searchData) {
+                            hideProc();
+
+                            if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
+                                // Fallback: try as address via fetchRoute
+                                addBubble("assistant", "No POI results. Trying address lookup...");
+                                fetchRoute(searchQuery, function (routeErr, route) {
+                                    if (!routeErr && route && route.steps && route.steps.length) {
+                                        scannedAddr = searchQuery;
+                                        showRouteSteps(route);
+                                        startLiveNavigation(route);
+                                    } else {
+                                        addBubble("assistant", uiText("route_not_found"));
+                                        restartMicAfterReply();
+                                    }
+                                });
+                                return;
+                            }
+
+                            var best = searchData.results[0];
+                            var dispName = best.building || best.address || searchQuery;
+                            var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
+                            var srcTag = best.source === "google_places" ? " ✅" : " 🗺";
+
+                            scannedAddr = best.address;
+                            addBubble("assistant", "📍 " + dispName + srcTag + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
+
+                            addBubble("assistant", uiText("route_starting"));
+                            fetchRouteByCoords(best.lat, best.lng, dispName, function (routeErr, route) {
+                                if (!routeErr && route && route.steps && route.steps.length) {
+                                    showRouteSteps(route);
+                                    startLiveNavigation(route);
+                                } else {
+                                    addBubble("assistant", uiText("route_not_found"));
+                                    restartMicAfterReply();
+                                }
+                            });
+                        });
+                    });
+                }, 150);
+                return;
+            }
+
+            // --- ADDRESS: flow (direct address geocode via Google Maps) ---
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
                 var navAddr = addrMatch[1].trim();
@@ -1252,22 +1502,22 @@
                         });
                     });
                 }, 150);
-            } else {
-                setTimeout(function () {
-                    speak(cleanReplyForSpeech(reply), restartMicAfterReply);
-                }, 150);
+                return;
             }
+
+            // --- Normal reply (no navigation) ---
+            setTimeout(function () {
+                speak(cleanReplyForSpeech(reply), restartMicAfterReply);
+            }, 150);
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  SCAN LABEL
-    // ═══════════════════════════════════════════════════════
     function handleScan(fileInput) {
         var file = fileInput.files && fileInput.files[0];
         if (!file || busy) return;
 
         busy = true;
+        syncReplyLanguageToSelection();
 
         compressImage(file, function (err, img) {
             if (err) {
@@ -1305,6 +1555,7 @@
 
                     var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
                     voice = tuneReplyByLanguage(voice);
+                    detectLang(voice);
 
                     setTimeout(function () {
                         speak(voice, function () {
@@ -1322,6 +1573,7 @@
                     }, 150);
                 } else {
                     reply = tuneReplyByLanguage(reply);
+                    detectLang(reply);
                     addBubble("assistant", reply);
                     setTimeout(function () {
                         speak(reply, restartMicAfterReply);
@@ -1331,10 +1583,100 @@
         });
     }
 
-    // ═══════════════════════════════════════════════════════
-    //  INIT
-    // ═══════════════════════════════════════════════════════
+    function handleStreetScan(fileInput) {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file || busy) return;
+
+        busy = true;
+        syncReplyLanguageToSelection();
+
+        compressImage(file, function (err, img) {
+            if (err) {
+                addBubble("assistant", "Error: " + err);
+                busy = false;
+                return;
+            }
+
+            addBubble("user", "📍 Street scan (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
+            showProc();
+
+            apiScanStreet(img.base64, function (err2, reply) {
+                hideProc();
+                busy = false;
+                fileInput.value = "";
+
+                if (err2) {
+                    addBubble("assistant", "Error: " + err2);
+                    speak("Street scan error.", restartMicAfterReply);
+                    return;
+                }
+
+                var parsed = null;
+                try {
+                    parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
+                } catch (e) {}
+
+                if (!parsed || !parsed.best_search) {
+                    addBubble("assistant", "Could not identify location from photo. Try capturing a road sign or building name.");
+                    speak("Could not identify location.", restartMicAfterReply);
+                    return;
+                }
+
+                // Show what was detected
+                var clueText = "";
+                if (parsed.road_name) clueText += "🛣 " + parsed.road_name + "\n";
+                if (parsed.building) clueText += "🏢 " + parsed.building + "\n";
+                if (parsed.block) clueText += "🔢 Block " + parsed.block + "\n";
+                if (parsed.expressway) clueText += "🛤 " + parsed.expressway + "\n";
+                if (parsed.landmark) clueText += "📍 " + parsed.landmark + "\n";
+                if (parsed.bus_stop) clueText += "🚌 Stop " + parsed.bus_stop + "\n";
+                if (parsed.clues) clueText += "👁 " + parsed.clues + "\n";
+                clueText += "🔎 Searching: " + parsed.best_search;
+
+                addBubble("assistant", clueText);
+
+                // Search for the identified location
+                apiPoiSearch(parsed.best_search, function (searchErr, searchData) {
+                    if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
+                        // Try road_name or building as fallback search
+                        var fallbackQuery = parsed.road_name || parsed.building || parsed.block;
+                        if (fallbackQuery) {
+                            addBubble("assistant", "Trying: " + fallbackQuery + "...");
+                            apiPoiSearch(fallbackQuery, function (fbErr, fbData) {
+                                if (!fbErr && fbData && fbData.results && fbData.results.length) {
+                                    showStreetSearchResult(fbData.results[0]);
+                                } else {
+                                    addBubble("assistant", "Location not found.");
+                                    restartMicAfterReply();
+                                }
+                            });
+                        } else {
+                            addBubble("assistant", "Location not found.");
+                            restartMicAfterReply();
+                        }
+                        return;
+                    }
+
+                    showStreetSearchResult(searchData.results[0]);
+                });
+            });
+        });
+    }
+
+    function showStreetSearchResult(best) {
+        var dispName = best.building || best.address;
+        var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
+        var srcTag = best.source === "google_places" ? " ✅" : " 🗺";
+
+        scannedAddr = best.address;
+        addBubble("assistant", "📍 " + dispName + srcTag + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
+
+        detectLang(dispName);
+        speak(dispName, restartMicAfterReply);
+    }
+
     renderLangBar();
+    syncReplyLanguageToSelection();
 
     CHIPS.forEach(function (c) {
         var btn = document.createElement("button");
@@ -1377,7 +1719,7 @@
     });
 
     cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-    photoIn.addEventListener("change", function () { handleScan(photoIn); });
+    photoIn.addEventListener("change", function () { handleStreetScan(photoIn); });
 
     navBtnEl.addEventListener("click", function () {
         unlockSpeech();
@@ -1405,7 +1747,8 @@
         "1️⃣ " + uiText("pick_language") + "\n" +
         "2️⃣ " + uiText("tap_mic_once") + "\n" +
         "3️⃣ " + uiText("scan_label") + "\n" +
-        "4️⃣ " + uiText("ask_route") + "\n" +
-        "5️⃣ " + uiText("rain_popup_note")
+        "4️⃣ " + uiText("scan_street") + "\n" +
+        "5️⃣ " + uiText("ask_route") + "\n" +
+        "6️⃣ " + uiText("rain_popup_note")
     );
 })();
