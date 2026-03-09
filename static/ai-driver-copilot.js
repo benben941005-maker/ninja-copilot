@@ -12,6 +12,7 @@
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
     var ETA_NOTIFY_SECONDS = 300; // 5 min
     var ETA_NOTIFY_METERS = 1200; // fallback
+    var GPS_MAX_ACCURACY = 60;
     var DEFAULT_CUSTOMER_PHONE = "";
 
     var ua = navigator.userAgent.toLowerCase();
@@ -796,6 +797,16 @@
             .catch(function (e) { cb(e.message); });
     }
 
+    function normalizePoiSearchQuery(query) {
+        var q = String(query || "").trim();
+        var lower = q.toLowerCase();
+        if (!q) return q;
+        if (lower === "haidilao" || lower.includes("海底捞")) return "Haidilao Hot Pot";
+        if (lower.includes("shell")) return "Shell";
+        if (lower.includes("toilet")) return "public toilet";
+        return q;
+    }
+
     function apiWeather(lat, lng, cb) {
         fetch("/api/weather?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng))
             .then(function (r) { return r.json(); })
@@ -804,6 +815,7 @@
     }
 
     function apiOneMapSearch(query, cb) {
+        query = normalizePoiSearchQuery(query);
         var params = "q=" + encodeURIComponent(query);
         if (gpsPos) {
             params += "&lat=" + gpsPos.lat + "&lng=" + gpsPos.lng;
@@ -1018,10 +1030,15 @@
 
         navigator.geolocation.watchPosition(
             function (p) {
+                var acc = Number(p.coords.accuracy || 9999);
+                if (acc > GPS_MAX_ACCURACY) return;
+
                 gpsPos = {
                     lat: p.coords.latitude,
                     lng: p.coords.longitude,
-                    acc: p.coords.accuracy
+                    acc: acc,
+                    speed: p.coords.speed || 0,
+                    heading: p.coords.heading || null
                 };
                 locBar.classList.remove("no-gps");
                 reverseGeocode(gpsPos.lat, gpsPos.lng);
@@ -1031,7 +1048,7 @@
                 locBar.classList.add("no-gps");
                 locAddr.textContent = "GPS searching...";
             },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 1000, timeout: 8000 }
         );
     }
 
@@ -1172,7 +1189,7 @@
         if (activeStepIndex >= activeRoute.steps.length) return;
 
         var now = Date.now();
-        if (now - lastGpsCheckAt < 1500) return;
+        if (now - lastGpsCheckAt < 1000) return;
         lastGpsCheckAt = now;
 
         var step = activeRoute.steps[activeStepIndex];
@@ -1180,43 +1197,40 @@
 
         var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
 
-        if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
+        if (dist <= 120 && lastSpokenStep !== activeStepIndex) {
             var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
             detectLang(warnText);
             speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
-            maybeShowArrivalNotify();
-            maybeShowRainAlert();
-            return;
         }
 
-        if (dist <= 25) {
+        if (dist <= 45) {
             activeStepIndex++;
             highlightActiveStep();
 
-            if (activeRoute && activeRoute.steps) {
-                var remainSecs = 0;
-                var remainMeters = 0;
-                for (var i = activeStepIndex; i < activeRoute.steps.length; i++) {
-                    remainSecs += Number(activeRoute.steps[i].duration || 0);
-                    remainMeters += Number(activeRoute.steps[i].distance || 0);
-                }
-                activeRoute.total_duration = remainSecs;
-                activeRoute.total_distance = remainMeters;
-                maybeShowArrivalNotify();
-                maybeShowRainAlert();
+            var remainSecs = 0;
+            var remainMeters = 0;
+            for (var i = activeStepIndex; i < activeRoute.steps.length; i++) {
+                remainSecs += Number(activeRoute.steps[i].duration || 0);
+                remainMeters += Number(activeRoute.steps[i].distance || 0);
             }
+            activeRoute.total_duration = remainSecs;
+            activeRoute.total_distance = remainMeters;
+
+            maybeShowArrivalNotify();
+            maybeShowRainAlert();
 
             if (activeStepIndex < activeRoute.steps.length) {
                 lastSpokenStep = -1;
                 setTimeout(function () {
                     speakCurrentStepIfNeeded(true);
-                }, 500);
+                }, 400);
             } else {
                 navActive = false;
                 detectLang(uiText("arrived"));
                 speak(uiText("arrived"));
+                showArrivalNotifyCard();
             }
         }
     }
