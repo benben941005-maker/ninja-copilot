@@ -56,8 +56,7 @@ jobs:
             ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},
             WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }},
             ONEMAP_EMAIL=${{ secrets.ONEMAP_EMAIL }},
-            ONEMAP_PASSWORD=${{ secrets.ONEMAP_PASSWORD }},
-            AI_PROVIDER=claude
+            ONEMAP_PASSWORD=${{ secrets.ONEMAP_PASSWORD }}
 
       - name: Show Live URL
         run: |
