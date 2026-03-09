@@ -19,7 +19,6 @@ def index():
 def static_files(path):
     return send_from_directory("static", path)
 
-
 # =========================================================
 # REVERSE GEOCODE
 # =========================================================
@@ -82,19 +81,48 @@ def geocode():
 
 
 # =========================================================
-# FORWARD GEOCODE
+# FORWARD GEOCODE (OneMap primary, Nominatim fallback)
 # =========================================================
 @app.route("/api/address-to-latlng")
 def address_to_latlng():
-    """Forward geocode: address text -> lat/lng."""
+    """Forward geocode: address text → lat/lng. Uses OneMap first."""
     try:
         address = request.args.get("address", "")
         if not address:
             return jsonify({"error": "Missing address"}), 400
 
+        # --- Try OneMap first (authoritative for Singapore) ---
+        try:
+            om_resp = requests.get(
+                "https://www.onemap.gov.sg/api/common/elastic/search",
+                params={
+                    "searchVal": address,
+                    "returnGeom": "Y",
+                    "getAddrDetails": "Y",
+                    "pageNum": 1
+                },
+                timeout=8
+            )
+            om_data = om_resp.json()
+            om_results = om_data.get("results", [])
+
+            if om_results:
+                best = om_results[0]
+                return jsonify({
+                    "lat": float(best.get("LATITUDE", 0)),
+                    "lng": float(best.get("LONGITUDE", 0)),
+                    "display": best.get("ADDRESS", best.get("SEARCHVAL", address)),
+                    "source": "onemap",
+                    "postal": best.get("POSTAL", ""),
+                    "building": best.get("BUILDING", "")
+                })
+        except Exception:
+            pass  # Fall through to Nominatim
+
+        # --- Fallback: Nominatim ---
         resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": address, "format": "json", "limit": 1},
+            params={"q": address + " Singapore", "format": "json", "limit": 1},
             headers={"User-Agent": "NinjaCoPilot/1.0"},
             timeout=8
         )
@@ -110,7 +138,8 @@ def address_to_latlng():
         return jsonify({
             "lat": float(results[0]["lat"]),
             "lng": float(results[0]["lon"]),
-            "display": results[0].get("display_name", "")
+            "display": results[0].get("display_name", ""),
+            "source": "nominatim"
         })
 
     except Exception as e:
@@ -122,26 +151,121 @@ def address_to_latlng():
 
 
 # =========================================================
-# ROUTE (supports driving + walking via OSRM)
+# ONEMAP POI / ADDRESS SEARCH
+# =========================================================
+@app.route("/api/onemap-search")
+def onemap_search():
+    """Search OneMap.sg for POIs, buildings, addresses near a location."""
+    try:
+        query = request.args.get("q", "")
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        limit = int(request.args.get("limit", 5))
+
+        if not query:
+            return jsonify({"error": "Missing query", "results": []})
+
+        # Search OneMap
+        resp = requests.get(
+            "https://www.onemap.gov.sg/api/common/elastic/search",
+            params={
+                "searchVal": query,
+                "returnGeom": "Y",
+                "getAddrDetails": "Y",
+                "pageNum": 1
+            },
+            timeout=8
+        )
+        data = resp.json()
+        raw_results = data.get("results", [])
+
+        if not raw_results:
+            return jsonify({
+                "results": [],
+                "total": 0,
+                "query": query
+            })
+
+        # Format and optionally sort by distance from driver
+        results = []
+        for r in raw_results[:20]:  # process up to 20
+            try:
+                rlat = float(r.get("LATITUDE", 0))
+                rlng = float(r.get("LONGITUDE", 0))
+            except (ValueError, TypeError):
+                continue
+
+            if rlat == 0 and rlng == 0:
+                continue
+
+            item = {
+                "address": r.get("ADDRESS", ""),
+                "building": r.get("BUILDING", ""),
+                "postal": r.get("POSTAL", ""),
+                "lat": rlat,
+                "lng": rlng,
+                "search_val": r.get("SEARCHVAL", "")
+            }
+
+            # Calculate distance from driver if GPS provided
+            if lat and lng:
+                try:
+                    import math
+                    dlat = float(lat)
+                    dlng = float(lng)
+                    R = 6371000
+                    phi1 = math.radians(dlat)
+                    phi2 = math.radians(rlat)
+                    dphi = math.radians(rlat - dlat)
+                    dlam = math.radians(rlng - dlng)
+                    a = (math.sin(dphi / 2) ** 2 +
+                         math.cos(phi1) * math.cos(phi2) *
+                         math.sin(dlam / 2) ** 2)
+                    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                    item["distance_m"] = round(R * c)
+                except Exception:
+                    item["distance_m"] = None
+            else:
+                item["distance_m"] = None
+
+            results.append(item)
+
+        # Sort by distance if available
+        if lat and lng:
+            results.sort(key=lambda x: x.get("distance_m") or 999999)
+
+        results = results[:limit]
+
+        return jsonify({
+            "results": results,
+            "total": data.get("found", len(results)),
+            "query": query
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "results": []
+        })
+
+
+# =========================================================
+# ROUTE
 # =========================================================
 @app.route("/api/route")
 def route():
-    """Get turn-by-turn directions using OSRM. Supports driving and walking profiles."""
+    """Get turn-by-turn driving directions using OSRM."""
     try:
         from_lat = request.args.get("from_lat")
         from_lng = request.args.get("from_lng")
         to_lat = request.args.get("to_lat")
         to_lng = request.args.get("to_lng")
-        profile = request.args.get("profile", "driving")  # "driving" or "foot"
 
         if not all([from_lat, from_lng, to_lat, to_lng]):
             return jsonify({"error": "Missing coordinates"}), 400
 
-        # OSRM profiles: driving, foot, bicycle
-        osrm_profile = "foot" if profile in ("foot", "walking") else "driving"
-
         url = (
-            f"https://router.project-osrm.org/route/v1/{osrm_profile}/"
+            f"https://router.project-osrm.org/route/v1/driving/"
             f"{from_lng},{from_lat};{to_lng},{to_lat}"
             f"?overview=full&steps=true&annotations=false&geometries=geojson"
         )
@@ -166,7 +290,7 @@ def route():
                 m_type = maneuver.get("type", "")
                 loc = maneuver.get("location", [None, None])
 
-                text = build_instruction(m_type, modifier, name, distance, osrm_profile)
+                text = build_instruction(m_type, modifier, name, distance)
                 if text:
                     steps.append({
                         "text": text,
@@ -186,9 +310,8 @@ def route():
             "steps": steps,
             "total_distance": total_dist,
             "total_duration": total_time,
-            "summary": f"{total_dist}m, ~{total_time // 60} min ({osrm_profile})",
-            "geometry": geometry,
-            "profile": osrm_profile
+            "summary": f"{total_dist}m, ~{total_time // 60} min",
+            "geometry": geometry
         })
 
     except Exception as e:
@@ -198,14 +321,13 @@ def route():
         })
 
 
-def build_instruction(m_type, modifier, name, distance, profile="driving"):
+def build_instruction(m_type, modifier, name, distance):
     """Convert OSRM maneuver into spoken direction."""
     dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance / 1000, 1)}km"
     road = f" onto {name}" if name else ""
-    verb = "Walk" if profile == "foot" else "Drive"
 
     if m_type == "depart":
-        return f"Start {verb.lower()}ing{road} for {dist_str}"
+        return f"Start driving{road} for {dist_str}"
     elif m_type == "arrive":
         return f"You have arrived at your destination{road}"
     elif m_type == "turn":
@@ -239,7 +361,7 @@ def build_instruction(m_type, modifier, name, distance, profile="driving"):
 # =========================================================
 @app.route("/api/weather")
 def weather():
-    """Check weather at given lat/lng using WeatherAPI."""
+    """Check weather at destination lat/lng using WeatherAPI."""
     try:
         lat = request.args.get("lat")
         lng = request.args.get("lng")
@@ -251,8 +373,7 @@ def weather():
             return jsonify({
                 "status": "weather_unavailable",
                 "is_rain": False,
-                "description": "Weather API key not configured",
-                "temp_c": None
+                "description": "Weather API key not configured"
             })
 
         resp = requests.get(
@@ -265,26 +386,20 @@ def weather():
         )
         data = resp.json()
 
-        current = data.get("current", {})
-        condition = current.get("condition", {})
-        condition_text = str(condition.get("text", "")).lower()
+        condition_text = str(
+            data.get("current", {})
+                .get("condition", {})
+                .get("text", "")
+        ).lower()
 
         rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
         is_rain = any(k in condition_text for k in rain_keywords)
 
-        bad_keywords = rain_keywords + ["snow", "sleet", "blizzard", "heavy", "fog", "mist"]
-        is_bad = any(k in condition_text for k in bad_keywords)
-
         return jsonify({
             "status": "ok",
             "is_rain": is_rain,
-            "is_bad_weather": is_bad,
-            "description": condition.get("text", "Unknown"),
-            "temp_c": current.get("temp_c"),
-            "humidity": current.get("humidity"),
-            "wind_kph": current.get("wind_kph"),
-            "feelslike_c": current.get("feelslike_c"),
-            "icon": condition.get("icon", ""),
+            "description": condition_text or "unknown",
+            "temp_c": data.get("current", {}).get("temp_c"),
             "raw": data
         })
 
@@ -292,8 +407,7 @@ def weather():
         return jsonify({
             "status": "weather_error",
             "is_rain": False,
-            "description": str(e),
-            "temp_c": None
+            "description": str(e)
         })
 
 
@@ -366,10 +480,18 @@ def transcribe():
 
             try:
                 lang_map = {
-                    "en": "en", "en-SG": "en",
-                    "zh-CN": "zh", "zh-TW": "zh", "zh-HK": "zh",
-                    "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th",
-                    "vi-VN": "vi", "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja"
+                    "en": "en",
+                    "en-SG": "en",
+                    "zh-CN": "zh",
+                    "zh-TW": "zh",
+                    "zh-HK": "zh",
+                    "ms-MY": "ms",
+                    "ta-IN": "ta",
+                    "th-TH": "th",
+                    "vi-VN": "vi",
+                    "id-ID": "id",
+                    "ko-KR": "ko",
+                    "ja-JP": "ja"
                 }
 
                 whisper_lang = "en"
