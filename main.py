@@ -1,140 +1,448 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
-import anthropic
 import os
-from typing import List, Optional
-import tempfile
+import time
+import requests
+from flask import Flask, request, jsonify, send_from_directory
 
-app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app = Flask(__name__, static_folder=".", static_url_path="")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
+ONEMAP_EMAIL = os.environ.get("ONEMAP_EMAIL", "")
+ONEMAP_PASSWORD = os.environ.get("ONEMAP_PASSWORD", "")
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
 
-SYSTEM_PROMPT = """You are a seasoned Ninja Van Senior Driver with 10+ years of last-mile delivery experience across Southeast Asia. You talk like a real senior driver — casual, confident, street-smart. You are the driver's trusted buddy riding shotgun, not a corporate bot.
-
-Your expertise:
-- Finding difficult addresses using landmarks, delivery notes, NLP tricks
-- Smart route re-sequencing when traffic hits or stops are skipped
-- Handling absent, angry, or difficult customers professionally
-- Incident reporting: damaged parcels, failed deliveries, road accidents
-- Ninja Van SOPs and escalation procedures
-
-GPS & NAVIGATION:
-- If the driver's message contains [DRIVER_GPS: lat,lng], you know their exact location
-- When a driver mentions a delivery address or says they are lost, extract the destination address
-
-When given an IMAGE:
-- ADDRESS/building/street sign → give navigation guidance
-- DAMAGED PARCEL → guide through incident reporting
-- MAP/ROUTE → suggest best sequence
-- CUSTOMER NOTE → interpret and advise
-
-CRITICAL LANGUAGE RULE:
-- ALWAYS reply in EXACTLY the same language the driver used
-- If Malay → reply Malay. Chinese → Chinese. Thai → Thai. Tamil → Tamil. Etc.
-- Never switch languages unless the driver switches first
-- Be casual and natural like a local coworker
-
-IMPORTANT RESPONSE FORMAT:
-- Do NOT use emojis — they get read aloud by voice
-- Plain text only, no markdown
-- SHORT and ACTIONABLE — max 3 steps
-- Encouraging tone
-
-SPECIAL TAGS (add on new line when relevant):
-- If driver needs navigation: [NAVIGATE_TO: full address]
-- If driver wants to see location: [SHOW_MY_LOCATION]"""
+_onemap_token = None
+_onemap_token_expiry = 0
 
 
-class ChatRequest(BaseModel):
-    messages: List[dict]
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
 
 
-@app.get("/")
-async def root():
-    return FileResponse("static/index.html")
+@app.route("/<path:path>")
+def static_files(path):
+    return send_from_directory(".", path)
 
 
-@app.get("/health")
-async def health():
-    return {"status": "ok"}
+# =========================================================
+# ONEMAP TOKEN
+# =========================================================
+def get_onemap_token():
+    global _onemap_token, _onemap_token_expiry
+
+    now = time.time()
+    if _onemap_token and now < _onemap_token_expiry:
+        return _onemap_token
+
+    if not ONEMAP_EMAIL or not ONEMAP_PASSWORD:
+        raise Exception("ONEMAP_EMAIL or ONEMAP_PASSWORD is missing")
+
+    resp = requests.post(
+        "https://www.onemap.gov.sg/api/auth/post/getToken",
+        json={
+            "email": ONEMAP_EMAIL,
+            "password": ONEMAP_PASSWORD
+        },
+        timeout=15
+    )
+    data = resp.json()
+
+    token = data.get("access_token")
+    if not token:
+        raise Exception(f"Failed to get OneMap token: {data}")
+
+    _onemap_token = token
+    _onemap_token_expiry = now + (60 * 60 * 24 * 2.8)
+    return _onemap_token
 
 
-@app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
-    """
-    Transcribe audio using Claude's vision/audio — 
-    we use OpenAI Whisper API via a direct call since Anthropic doesn't have audio transcription.
-    Falls back gracefully if not available.
-    """
-    # Check if OpenAI key is available for Whisper
-    openai_key = os.environ.get("OPENAI_API_KEY", "")
-    
-    if not openai_key:
-        # Return empty so frontend falls back to Web Speech API
-        return {"transcript": "", "language": "en", "fallback": True}
-    
+# =========================================================
+# REVERSE GEOCODE
+# =========================================================
+@app.route("/api/geocode")
+def geocode():
     try:
-        import httpx
-        audio_data = await audio.read()
-        
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {openai_key}"},
-                files={"file": (audio.filename or "audio.webm", audio_data, audio.content_type or "audio/webm")},
-                data={"model": "whisper-1", "response_format": "verbose_json"}
-            )
-            result = response.json()
-            return {
-                "transcript": result.get("text", ""),
-                "language": result.get("language", "en"),
-                "fallback": False
-            }
-    except Exception as e:
-        return {"transcript": "", "language": "en", "fallback": True, "error": str(e)}
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
 
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
 
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    if not ANTHROPIC_API_KEY:
-        raise HTTPException(status_code=500, detail="API key not configured")
+        token = get_onemap_token()
 
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-    try:
-        response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=request.messages,
+        resp = requests.get(
+            "https://www.onemap.gov.sg/api/common/elastic/reversegeocode",
+            params={
+                "location": f"{lat},{lng}",
+                "buffer": 20,
+                "addressType": "All"
+            },
+            headers={"Authorization": token},
+            timeout=12
         )
-        full_text = response.content[0].text
+        data = resp.json()
+        results = data.get("GeocodeInfo", [])
 
-        dest_address = None
-        show_my_location = False
-        reply_text = full_text
+        if not results:
+            return jsonify({
+                "address": None,
+                "raw": {},
+                "fallback": f"{lat},{lng}"
+            })
 
-        if "[NAVIGATE_TO:" in full_text:
-            parts = full_text.split("[NAVIGATE_TO:")
-            reply_text = parts[0].strip()
-            dest_address = parts[1].split("]")[0].strip()
+        r = results[0]
 
-        if "[SHOW_MY_LOCATION]" in full_text:
-            reply_text = full_text.replace("[SHOW_MY_LOCATION]", "").strip()
-            show_my_location = True
+        block = r.get("BLOCK", "")
+        road = r.get("ROAD", "")
+        building = r.get("BUILDINGNAME", "")
+        postal = r.get("POSTALCODE", "")
 
-        return {
-            "reply": reply_text,
-            "dest_address": dest_address,
-            "show_my_location": show_my_location
-        }
+        parts = []
+
+        if building and building != "NIL":
+            parts.append(building)
+
+        street_line = " ".join(x for x in [block, road] if x and x != "NIL").strip()
+        if street_line:
+            parts.append(street_line)
+
+        if postal and postal != "NIL":
+            parts.append(f"Singapore {postal}")
+        else:
+            parts.append("Singapore")
+
+        nice_address = ", ".join(parts)
+
+        return jsonify({
+            "address": nice_address,
+            "raw": r
+        })
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return jsonify({
+            "address": None,
+            "error": str(e)
+        })
 
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# =========================================================
+# FORWARD GEOCODE / SEARCH
+# =========================================================
+@app.route("/api/address-to-latlng")
+def address_to_latlng():
+    try:
+        address = request.args.get("address", "")
+        if not address:
+            return jsonify({"error": "Missing address"}), 400
+
+        token = get_onemap_token()
+
+        resp = requests.get(
+            "https://www.onemap.gov.sg/api/common/elastic/search",
+            params={
+                "searchVal": address,
+                "returnGeom": "Y",
+                "getAddrDetails": "Y",
+                "pageNum": 1
+            },
+            headers={"Authorization": token},
+            timeout=12
+        )
+        data = resp.json()
+        results = data.get("results", [])
+
+        if not results:
+            return jsonify({
+                "error": "Address not found",
+                "lat": None,
+                "lng": None
+            })
+
+        r = results[0]
+
+        display_parts = []
+
+        building = r.get("BUILDING")
+        address_line = r.get("ADDRESS")
+        postal = r.get("POSTAL")
+
+        if building and building != "NIL":
+            display_parts.append(building)
+        if address_line and address_line != "NIL":
+            display_parts.append(address_line)
+        if postal and postal != "NIL":
+            display_parts.append(f"Singapore {postal}")
+
+        return jsonify({
+            "lat": float(r["LATITUDE"]),
+            "lng": float(r["LONGITUDE"]),
+            "display": ", ".join(display_parts) if display_parts else address
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "lat": None,
+            "lng": None
+        })
+
+
+# =========================================================
+# ROUTE
+# =========================================================
+@app.route("/api/route")
+def route():
+    try:
+        from_lat = request.args.get("from_lat")
+        from_lng = request.args.get("from_lng")
+        to_lat = request.args.get("to_lat")
+        to_lng = request.args.get("to_lng")
+
+        if not all([from_lat, from_lng, to_lat, to_lng]):
+            return jsonify({"error": "Missing coordinates"}), 400
+
+        token = get_onemap_token()
+
+        resp = requests.get(
+            "https://www.onemap.gov.sg/api/public/routingsvc/route",
+            params={
+                "start": f"{from_lat},{from_lng}",
+                "end": f"{to_lat},{to_lng}",
+                "routeType": "drive"
+            },
+            headers={"Authorization": token},
+            timeout=20
+        )
+        data = resp.json()
+
+        if data.get("status") == "error":
+            return jsonify({"error": data.get("message", "No route found"), "steps": []})
+
+        route_summary = data.get("route_summary", {})
+        instructions = data.get("route_instructions", [])
+        route_geometry = data.get("route_geometry", "")
+
+        steps = []
+        for item in instructions:
+            # OneMap usually returns arrays like:
+            # [instruction_text, road_name, distance, time, lat, lng]
+            text = item[0] if len(item) > 0 else ""
+            distance = item[2] if len(item) > 2 and isinstance(item[2], (int, float)) else 0
+            duration = item[3] if len(item) > 3 and isinstance(item[3], (int, float)) else 0
+
+            lat = None
+            lng = None
+            if len(item) > 5:
+                try:
+                    lat = float(item[4])
+                    lng = float(item[5])
+                except Exception:
+                    lat = None
+                    lng = None
+
+            if text:
+                steps.append({
+                    "text": text,
+                    "distance": round(distance),
+                    "duration": round(duration),
+                    "type": "instruction",
+                    "modifier": "",
+                    "lat": lat,
+                    "lng": lng
+                })
+
+        total_dist = round(route_summary.get("total_distance", 0))
+        total_time = round(route_summary.get("total_time", 0))
+
+        return jsonify({
+            "steps": steps,
+            "total_distance": total_dist,
+            "total_duration": total_time,
+            "summary": f"{total_dist}m, ~{max(1, round(total_time / 60))} min",
+            "geometry": route_geometry
+        })
+
+    except Exception as e:
+        return jsonify({
+            "error": str(e),
+            "steps": []
+        })
+
+
+# =========================================================
+# WEATHER
+# =========================================================
+@app.route("/api/weather")
+def weather():
+    try:
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
+
+        if not WEATHER_API_KEY:
+            return jsonify({
+                "status": "weather_unavailable",
+                "is_rain": False,
+                "description": "Weather API key not configured"
+            })
+
+        resp = requests.get(
+            "https://api.weatherapi.com/v1/current.json",
+            params={
+                "key": WEATHER_API_KEY,
+                "q": f"{lat},{lng}"
+            },
+            timeout=10
+        )
+        data = resp.json()
+
+        condition_text = str(
+            data.get("current", {})
+            .get("condition", {})
+            .get("text", "")
+        ).lower()
+
+        rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
+        is_rain = any(k in condition_text for k in rain_keywords)
+
+        return jsonify({
+            "status": "ok",
+            "is_rain": is_rain,
+            "description": condition_text or "unknown",
+            "temp_c": data.get("current", {}).get("temp_c"),
+            "raw": data
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "weather_error",
+            "is_rain": False,
+            "description": str(e)
+        })
+
+
+# =========================================================
+# CHAT
+# =========================================================
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    try:
+        data = request.json or {}
+        system = data.get("system", "")
+        messages = data.get("messages", [])
+
+        reply = call_claude(system, messages)
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =========================================================
+# OCR / VISION SCAN
+# =========================================================
+@app.route("/api/scan", methods=["POST"])
+def scan():
+    try:
+        data = request.json or {}
+        system = data.get("system", "")
+        image_base64 = data.get("image_base64", "")
+        ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
+
+        reply = call_claude_vision(system, image_base64, ocr_prompt)
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# =========================================================
+# TRANSCRIBE
+# =========================================================
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    return jsonify({
+        "error": "OPENAI_API_KEY not configured. Use browser speech recognition fallback.",
+        "text": ""
+    })
+
+
+# =========================================================
+# LLM CALLS
+# =========================================================
+def call_claude(system, messages):
+    if not ANTHROPIC_API_KEY:
+        raise Exception("ANTHROPIC_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 300,
+            "system": system,
+            "messages": messages
+        },
+        timeout=30
+    )
+    data = resp.json()
+
+    if "error" in data:
+        raise Exception(data["error"].get("message", str(data["error"])))
+
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+def call_claude_vision(system, image_base64, prompt):
+    if not ANTHROPIC_API_KEY:
+        raise Exception("ANTHROPIC_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 300,
+            "system": system,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/jpeg",
+                            "data": image_base64
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt
+                    }
+                ]
+            }]
+        },
+        timeout=30
+    )
+    data = resp.json()
+
+    if "error" in data:
+        raise Exception(data["error"].get("message", str(data["error"])))
+
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
