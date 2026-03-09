@@ -108,8 +108,21 @@
             <button class="plb" id="photoBtn"><span>🛣️</span><span>STREET</span></button>
             <button class="nvb" id="navBtn"><span>🚗</span><span>NAV</span></button>
         </div>
+        <!-- Camera-only inputs -->
         <input type="file" id="cameraIn" accept="image/*" capture="environment" style="display:none">
-        <input type="file" id="photoIn" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="streetCameraIn" accept="image/*" capture="environment" style="display:none">
+        <!-- Gallery inputs (no capture = shows camera + gallery picker) -->
+        <input type="file" id="galleryIn" accept="image/*" style="display:none">
+        <input type="file" id="streetGalleryIn" accept="image/*" style="display:none">
+    </div>
+    <!-- Scan mode picker popup -->
+    <div id="scanPicker" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:999;background:rgba(0,0,0,0.85);padding:16px;max-width:500px;margin:0 auto;border-radius:18px 18px 0 0;">
+        <div id="scanPickerTitle" style="color:#fff;font-size:13px;font-weight:700;text-align:center;margin-bottom:12px;"></div>
+        <div style="display:flex;gap:8px;">
+            <button id="pickCamera" style="flex:1;padding:14px;border-radius:12px;border:none;background:#E31837;color:#fff;font-size:13px;font-weight:700;cursor:pointer;">📷 Camera</button>
+            <button id="pickGallery" style="flex:1;padding:14px;border-radius:12px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:13px;font-weight:700;cursor:pointer;">🖼️ Gallery</button>
+        </div>
+        <button id="pickCancel" style="width:100%;padding:12px;margin-top:8px;border-radius:12px;border:none;background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;cursor:pointer;">Cancel</button>
     </div>
 </div>
 <script src="ai-driver-copilot.js"></script>
