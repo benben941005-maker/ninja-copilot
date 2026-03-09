@@ -194,6 +194,27 @@
         ].join("\n");
     }
 
+    function getStreetPrompt() {
+        return [
+            "You are a Singapore street/location identifier for delivery drivers.",
+            "Analyze this photo taken from a vehicle or street level in Singapore.",
+            "Look for ANY location clues:",
+            "- Road signs (blue/green signs with street names)",
+            "- Building names, condo names, mall names",
+            "- Block/HDB numbers visible on buildings",
+            "- Bus stop numbers or MRT station names",
+            "- Shopfront names or signage",
+            "- Expressway signs (PIE, CTE, AYE, ECP, etc.)",
+            "- Landmark structures",
+            "- Postal codes on any signage",
+            "",
+            "Driver is currently near: " + (currentStreet || "unknown") + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "") + ".",
+            "",
+            "Return JSON ONLY with what you can identify:",
+            '{"road_name":"street/road name if visible or null","building":"building/condo/mall name or null","block":"block/HDB number or null","expressway":"expressway name or null","landmark":"any recognizable landmark or null","bus_stop":"bus stop number or null","best_search":"single best search term for OneMap.sg to find this location","confidence":"high/medium/low","clues":"brief description of what you saw"}'
+        ].join("\n");
+    }
+
     var CHIPS = [
         "Cannot find address",
         "No answer",
@@ -211,6 +232,7 @@
             pick_language: "选择语言",
             tap_mic_once: "按一下 🎙️",
             scan_label: "扫描包裹标签来读取电话号码",
+            scan_street: "拍摄路牌识别街道位置",
             ask_route: "输入目的地或说出附近地点",
             rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
             route_starting: "现在开始导航...",
@@ -237,6 +259,7 @@
             pick_language: "揀語言",
             tap_mic_once: "撳一下 🎙️",
             scan_label: "掃描包裹標籤讀取電話號碼",
+            scan_street: "影路牌識別街道位置",
             ask_route: "輸入目的地或者講附近地點",
             rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
             route_starting: "而家開始導航...",
@@ -263,6 +286,7 @@
             pick_language: "Pick language",
             tap_mic_once: "Tap 🎙️ once",
             scan_label: "Scan parcel label to capture phone",
+            scan_street: "Snap road sign to identify location",
             ask_route: "Ask for a route",
             rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
             route_starting: "Getting directions...",
@@ -736,6 +760,21 @@
                 system: getSysPrompt(),
                 image_base64: base64,
                 ocr_prompt: getOcrPrompt()
+            })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+            .catch(function (e) { cb(e.message); });
+    }
+
+    function apiScanStreet(base64, cb) {
+        fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system: "You are a Singapore street and location identifier. Return only valid JSON.",
+                image_base64: base64,
+                ocr_prompt: getStreetPrompt()
             })
         })
             .then(function (r) { return r.json(); })
@@ -1537,6 +1576,97 @@
         });
     }
 
+    function handleStreetScan(fileInput) {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file || busy) return;
+
+        busy = true;
+        syncReplyLanguageToSelection();
+
+        compressImage(file, function (err, img) {
+            if (err) {
+                addBubble("assistant", "Error: " + err);
+                busy = false;
+                return;
+            }
+
+            addBubble("user", "📍 Street scan (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
+            showProc();
+
+            apiScanStreet(img.base64, function (err2, reply) {
+                hideProc();
+                busy = false;
+                fileInput.value = "";
+
+                if (err2) {
+                    addBubble("assistant", "Error: " + err2);
+                    speak("Street scan error.", restartMicAfterReply);
+                    return;
+                }
+
+                var parsed = null;
+                try {
+                    parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
+                } catch (e) {}
+
+                if (!parsed || !parsed.best_search) {
+                    addBubble("assistant", "Could not identify location from photo. Try capturing a road sign or building name.");
+                    speak("Could not identify location.", restartMicAfterReply);
+                    return;
+                }
+
+                // Show what was detected
+                var clueText = "";
+                if (parsed.road_name) clueText += "🛣 " + parsed.road_name + "\n";
+                if (parsed.building) clueText += "🏢 " + parsed.building + "\n";
+                if (parsed.block) clueText += "🔢 Block " + parsed.block + "\n";
+                if (parsed.expressway) clueText += "🛤 " + parsed.expressway + "\n";
+                if (parsed.landmark) clueText += "📍 " + parsed.landmark + "\n";
+                if (parsed.bus_stop) clueText += "🚌 Stop " + parsed.bus_stop + "\n";
+                if (parsed.clues) clueText += "👁 " + parsed.clues + "\n";
+                clueText += "🔎 Searching: " + parsed.best_search;
+
+                addBubble("assistant", clueText);
+
+                // Search OneMap with the identified location
+                apiOneMapSearch(parsed.best_search, function (searchErr, searchData) {
+                    if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
+                        // Try road_name or building as fallback search
+                        var fallbackQuery = parsed.road_name || parsed.building || parsed.block;
+                        if (fallbackQuery) {
+                            addBubble("assistant", "Trying: " + fallbackQuery + "...");
+                            apiOneMapSearch(fallbackQuery, function (fbErr, fbData) {
+                                if (!fbErr && fbData && fbData.results && fbData.results.length) {
+                                    showStreetSearchResult(fbData.results[0]);
+                                } else {
+                                    addBubble("assistant", "Location not found on OneMap.");
+                                    restartMicAfterReply();
+                                }
+                            });
+                        } else {
+                            addBubble("assistant", "Location not found on OneMap.");
+                            restartMicAfterReply();
+                        }
+                        return;
+                    }
+
+                    showStreetSearchResult(searchData.results[0]);
+                });
+            });
+        });
+    }
+
+    function showStreetSearchResult(best) {
+        var dispName = best.building || best.address;
+        var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
+
+        scannedAddr = best.address;
+        addBubble("assistant", "📍 " + dispName + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
+
+        detectLang(dispName);
+        speak(dispName, restartMicAfterReply);
+    }
+
     renderLangBar();
     syncReplyLanguageToSelection();
 
@@ -1581,7 +1711,7 @@
     });
 
     cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-    photoIn.addEventListener("change", function () { handleScan(photoIn); });
+    photoIn.addEventListener("change", function () { handleStreetScan(photoIn); });
 
     navBtnEl.addEventListener("click", function () {
         unlockSpeech();
@@ -1609,7 +1739,8 @@
         "1️⃣ " + uiText("pick_language") + "\n" +
         "2️⃣ " + uiText("tap_mic_once") + "\n" +
         "3️⃣ " + uiText("scan_label") + "\n" +
-        "4️⃣ " + uiText("ask_route") + "\n" +
-        "5️⃣ " + uiText("rain_popup_note")
+        "4️⃣ " + uiText("scan_street") + "\n" +
+        "5️⃣ " + uiText("ask_route") + "\n" +
+        "6️⃣ " + uiText("rain_popup_note")
     );
 })();
