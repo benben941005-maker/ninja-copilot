@@ -1,18 +1,17 @@
 // ═══════════════════════════════════════════════════════════
-//  NINJA CO-PILOT
-//  - strict language alignment
-//  - scan / route / ETA notify
-//  - 5-minute arrival popup
-//  - customer message ALWAYS in English
+//  NINJA CO-PILOT v2.0
+//  NEW: Transport mode detect | Live Leaflet map | Weather widget
+//       Better multilingual SG | Live camera AI chat
 // ═══════════════════════════════════════════════════════════
 
 (function () {
     "use strict";
 
     var MAX_DIM = 800, MAX_BYTES = 4 * 1024 * 1024;
-    var ETA_NOTIFY_SECONDS = 300; // 5 min
-    var ETA_NOTIFY_METERS = 1200; // fallback
+    var ETA_NOTIFY_SECONDS = 300;
+    var ETA_NOTIFY_METERS = 1200;
     var DEFAULT_CUSTOMER_PHONE = "";
+    var WEATHER_REFRESH_MS = 5 * 60 * 1000; // 5 min
 
     var ua = navigator.userAgent.toLowerCase();
     var isIOS = /iphone|ipad|ipod/.test(ua);
@@ -48,86 +47,109 @@
         "en": ["en-SG", "en-US", "en-GB", "en"]
     };
 
+    // ── State ──────────────────────────────────────────────
     var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
     var isListening = false, recognition = null, gpsPos = null, selectedLang = 0;
     var currentStreet = "";
     var mediaRecorder = null, audioChunks = [];
-    var recordTimer = null;
-    var ttsTimer = null;
+    var recordTimer = null, ttsTimer = null;
     var speechUnlocked = false;
-
-    var activeRoute = null;
-    var activeStepIndex = 0;
-    var lastSpokenStep = -1;
-    var navActive = false;
+    var activeRoute = null, activeStepIndex = 0, lastSpokenStep = -1, navActive = false;
     var lastGpsCheckAt = 0;
-
     var customerPhone = DEFAULT_CUSTOMER_PHONE;
-    var notifyShownForRoute = false;
-    var arrivalPromptSpoken = false;
-    var rainAlertShownForRoute = false;
-    var currentWeatherInfo = null;
-
+    var notifyShownForRoute = false, arrivalPromptSpoken = false;
+    var rainAlertShownForRoute = false, currentWeatherInfo = null;
     var lastDetectedLang = "en-SG";
 
-    var chatEl = document.getElementById("chat"), inp = document.getElementById("inp");
-    var sendBtn = document.getElementById("sendBtn"), voiceBtn = document.getElementById("voiceBtn");
-    var scanBtn = document.getElementById("scanBtn"), photoBtn = document.getElementById("photoBtn");
-    var navBtnEl = document.getElementById("navBtn"), stopBtnEl = document.getElementById("stopBtn");
-    var sbEl = document.getElementById("sb"), micBar = document.getElementById("micBar");
-    var micLabel = document.getElementById("micLabel");
-    var locBar = document.getElementById("locBar"), locAddr = document.getElementById("locAddr");
-    var langBar = document.getElementById("langBar"), chipsEl = document.getElementById("chips");
-    var cameraIn = document.getElementById("cameraIn");
-    var galleryIn = document.getElementById("galleryIn");
-    var streetCameraIn = document.getElementById("streetCameraIn");
-    var streetGalleryIn = document.getElementById("streetGalleryIn");
-    var scanPicker = document.getElementById("scanPicker");
-    var scanPickerTitle = document.getElementById("scanPickerTitle");
-    var pickCamera = document.getElementById("pickCamera");
-    var pickGallery = document.getElementById("pickGallery");
-    var pickCancel = document.getElementById("pickCancel");
-    var currentPickerMode = null; // "scan" or "street"
+    // Transport mode
+    var transportMode = "unknown"; // driving | walking | mrt | unknown
+    var lastWeatherRefresh = 0;
 
-    function currentLang() {
-        return LANGUAGES[selectedLang];
-    }
+    // Routing mode preference (can be overridden by transport detection)
+    var routingMode = "driving"; // driving | walking
 
-    function syncReplyLanguageToSelection() {
-        lastDetectedLang = currentLang().code;
-    }
+    // Leaflet map
+    var leafletMap = null, mapMarker = null, routeLayer = null, destMarker = null;
+    var mapVisible = false;
 
-    function isCantoneseMode() {
-        return currentLang().code === "zh-HK";
-    }
+    // Live camera
+    var camActive = false, camStream = null, camAutoInterval = null, camAutoOn = false;
 
-    function isTraditionalChineseMode() {
-        return currentLang().code === "zh-TW";
-    }
+    // ── DOM refs ───────────────────────────────────────────
+    var chatEl       = document.getElementById("chat");
+    var inp          = document.getElementById("inp");
+    var sendBtn      = document.getElementById("sendBtn");
+    var voiceBtn     = document.getElementById("voiceBtn");
+    var scanBtn      = document.getElementById("scanBtn");
+    var photoBtn     = document.getElementById("photoBtn");
+    var sbEl         = document.getElementById("sb");
+    var micBar       = document.getElementById("micBar");
+    var micLabel     = document.getElementById("micLabel");
+    var locBar       = document.getElementById("locBar");
+    var locAddr      = document.getElementById("locAddr");
+    var langBar      = document.getElementById("langBar");
+    var chipsEl      = document.getElementById("chips");
+    var cameraIn     = document.getElementById("cameraIn");
+    var photoIn      = document.getElementById("photoIn");
+    var mapBtn       = document.getElementById("mapBtn");
+    var mapPanel     = document.getElementById("mapPanel");
+    var mapZoomIn    = document.getElementById("mapZoomIn");
+    var mapZoomOut   = document.getElementById("mapZoomOut");
+    var mapCenter    = document.getElementById("mapCenter");
+    var mapClose     = document.getElementById("mapClose");
+    var mpDriving    = document.getElementById("mpDriving");
+    var mpWalking    = document.getElementById("mpWalking");
+    var liveCamBtn   = document.getElementById("liveCamBtn");
+    var camOverlay   = document.getElementById("camOverlay");
+    var camVideo     = document.getElementById("camVideo");
+    var camSnap      = document.getElementById("camSnap");
+    var camCloseBtn  = document.getElementById("camCloseBtn");
+    var camAutoToggle= document.getElementById("camAutoToggle");
+    var camStatus    = document.getElementById("camStatus");
+    var camAiReply   = document.getElementById("camAiReply");
+    var modeBadge    = document.getElementById("modeBadge");
+    var wxBadge      = document.getElementById("wxBadge");
+    var wxIcon       = document.getElementById("wxIcon");
+    var wxTemp       = document.getElementById("wxTemp");
+    var wxDesc       = document.getElementById("wxDesc");
+    var navBtnEl     = document.getElementById("navBtn");
+    var stopBtnEl    = document.getElementById("stopBtn");
 
-    function isSimplifiedChineseMode() {
-        return currentLang().code === "zh-CN";
-    }
+    // ── Language helpers ───────────────────────────────────
+    function currentLang() { return LANGUAGES[selectedLang]; }
+    function syncReplyLanguageToSelection() { lastDetectedLang = currentLang().code; }
+    function isCantoneseMode()   { return currentLang().code === "zh-HK"; }
+    function isTraditionalMode() { return currentLang().code === "zh-TW"; }
+    function isSimplifiedMode()  { return currentLang().code === "zh-CN"; }
 
     function getPreferredReplyLanguage() {
         var code = currentLang().code;
         if (code === "zh-HK") return "Cantonese";
         if (code === "zh-TW") return "Traditional Chinese";
         if (code === "zh-CN") return "Simplified Chinese";
-        if (code === "ms-MY") return "Malay";
-        if (code === "ta-IN") return "Tamil";
-        if (code === "th-TH") return "Thai";
-        if (code === "vi-VN") return "Vietnamese";
-        if (code === "id-ID") return "Bahasa Indonesia";
-        if (code === "ko-KR") return "Korean";
-        if (code === "ja-JP") return "Japanese";
-        return "English";
+        var map = { "ms-MY":"Malay","ta-IN":"Tamil","th-TH":"Thai","vi-VN":"Vietnamese","id-ID":"Bahasa Indonesia","ko-KR":"Korean","ja-JP":"Japanese" };
+        return map[code] || "English";
     }
+
+    // ── Singapore place name context ───────────────────────
+    // FIX: Mixed-language place names (Kaki Bukit, Toa Payoh, etc.)
+    var SG_PLACE_CONTEXT = [
+        "Singapore place names can be English, Malay, Chinese, or Tamil.",
+        "Common SG place names to NEVER translate: Kaki Bukit, Toa Payoh, Ang Mo Kio, Yio Chu Kang,",
+        "Bukit Timah, Clementi, Tampines, Pasir Ris, Bedok, Jurong, Woodlands, Yishun,",
+        "Sembawang, Punggol, Sengkang, Hougang, Serangoon, Bishan, Buona Vista,",
+        "Orchard, Dhoby Ghaut, Farrer Road, Newton, Novena, Boon Lay, Lakeside,",
+        "Choa Chu Kang, Bukit Batok, Bukit Gombak, Kranji, Marsiling, Admiralty.",
+        "MRT line names: North-South Line, East-West Line, Circle Line, Downtown Line, Thomson-East Coast Line.",
+        "If driver mentions a Singapore place name in any language, keep the original place name in the ADDRESS."
+    ].join(" ");
 
     function getSysPrompt() {
         var locInfo = currentStreet
             ? "\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")
             : "";
+
+        var modeInfo = "\nTransport mode: " + transportMode + ". Routing preference: " + routingMode + ".";
 
         var replyRule;
         if (isCantoneseMode()) {
@@ -139,69 +161,47 @@
                 "Do NOT reply in simplified Chinese.",
                 "Do NOT translate into standard written Chinese."
             ].join(" ");
-        } else if (isTraditionalChineseMode()) {
-            replyRule = [
-                "IMPORTANT: Reply ONLY in Traditional Chinese.",
-                "Use Traditional Chinese characters only.",
-                "Do NOT reply in Simplified Chinese.",
-                "Do NOT reply in Cantonese unless the driver switches to Cantonese."
-            ].join(" ");
-        } else if (isSimplifiedChineseMode()) {
-            replyRule = [
-                "IMPORTANT: Reply ONLY in Simplified Chinese.",
-                "Use Simplified Chinese characters only.",
-                "Do NOT reply in Traditional Chinese.",
-                "Do NOT reply in Cantonese unless the driver switches language."
-            ].join(" ");
+        } else if (isTraditionalMode()) {
+            replyRule = "IMPORTANT: Reply ONLY in Traditional Chinese. Use Traditional Chinese characters only. Do NOT reply in Simplified Chinese.";
+        } else if (isSimplifiedMode()) {
+            replyRule = "IMPORTANT: Reply ONLY in Simplified Chinese. Use Simplified Chinese characters only. Do NOT reply in Traditional Chinese.";
         } else {
             replyRule = "IMPORTANT: Reply ONLY in " + getPreferredReplyLanguage() + ". Use natural local wording. Do not switch language.";
         }
 
         return [
-            "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo,
+            "You are Ninja Co-Pilot, AI assistant for Ninja Van delivery drivers." + locInfo + modeInfo,
             replyRule,
             "If the driver speaks in a specific language variant, reply in exactly that same language variant.",
             "Never switch to another Chinese variant unless the user switches first.",
             "RULES: Under 60 words. Professional. Action first.",
             "",
-            "NAVIGATION — TWO FORMATS:",
+            SG_PLACE_CONTEXT,
             "",
-            "FORMAT 1 — SEARCH (for POI/business/place names):",
-            "When driver asks for a restaurant, petrol station, toilet, shop, mall, or ANY named business/place:",
-            "- You MUST reply with: SEARCH: <place name in English>",
-            "- ALWAYS use the English/romanized brand name for SEARCH, even if driver speaks Chinese/other language.",
-            "- Example: driver says '带我去海底捞' → reply with SEARCH: haidilao",
-            "- Example: driver says '去麦当劳' → reply with SEARCH: mcdonalds",
-            "- Example: driver says 'nearest Shell station' → reply with SEARCH: shell",
-            "- Example: driver says 'nearest toilet' → reply with SEARCH: toilet",
-            "- Example: driver says 'go to Jurong Point' → reply with SEARCH: Jurong Point",
-            "- Example: driver says 'KFC nearby' → reply with SEARCH: KFC",
-            "- Example: driver says 'nearest petrol' → reply with SEARCH: petrol station",
-            "- Keep SEARCH term short: just the brand/place name, 1-3 words.",
-            "- Do NOT guess or invent a specific street address for businesses.",
-            "- The system will find the real nearest location automatically.",
-            "",
-            "FORMAT 2 — ADDRESS (for specific known addresses only):",
-            "When driver provides a FULL specific street address or postal code:",
-            "- Reply with: ADDRESS: <the full address>",
-            "- Example: driver says 'go to 1 Jurong West Central 2' → ADDRESS: 1 Jurong West Central 2 Singapore",
-            "- Example: driver says 'block 214 Bedok' → ADDRESS: Block 214 Bedok North Street 1 Singapore",
-            "",
-            "CRITICAL: NEVER guess a specific street address for a business name.",
-            "If driver asks for a business/POI, ALWAYS use SEARCH: format.",
-            "If driver gives a full address, use ADDRESS: format.",
+            "NAVIGATION REQUESTS:",
+            "When driver asks to go to ANY place (restaurant, petrol station, toilet, shop, block, building, MRT, bus stop, etc.):",
+            "- Find the nearest one based on driver's current location in Singapore",
+            "- You MUST include this exact line in your reply:",
+            "  ADDRESS: [full Singapore address with street name and postal code]",
+            "- Never return only a block number",
+            "- Never return only a place name",
+            "- Without the ADDRESS: line, navigation cannot start",
             "",
             "PARTIAL ADDRESSES:",
-            "If driver says only a block number like '214', 'block 214', or 'blk 214',",
-            "combine it with current location area and return ADDRESS: Block 214 <nearest street from current location> Singapore"
+            "If driver says only a block number like '214', 'block 214', or 'blk 214', combine it with current location to infer a full Singapore address with postal code.",
+            "",
+            "TRANSPORT MODE:",
+            "If mode is 'walking', suggest walking route and nearby MRT/bus.",
+            "If mode is 'mrt', suggest nearest MRT station first.",
+            "If mode is 'driving', suggest driving route."
         ].join("\n");
     }
 
     function getOcrPrompt() {
         return [
             "Extract delivery info from this package label. Auto-detect language.",
-            "Driver is at: " + (currentStreet || "unknown") + ".",
-            "If label only shows block/unit without street, infer full address from driver location.",
+            "Driver is at: " + (currentStreet || "unknown") + " Singapore.",
+            "If label only shows block/unit without street, infer full Singapore address from driver location.",
             "Extract unit/floor/block separately.",
             "Extract phone number if visible. Return phone as plain digits if possible.",
             "JSON ONLY:",
@@ -209,118 +209,76 @@
         ].join("\n");
     }
 
-    function getStreetPrompt() {
+    function getLiveCamPrompt() {
+        var modeCtx = transportMode !== "unknown" ? " Driver is " + transportMode + "." : "";
         return [
-            "You are a Singapore street/location identifier for delivery drivers.",
-            "Analyze this photo taken from a vehicle or street level in Singapore.",
-            "Look for ANY location clues:",
-            "- Road signs (blue/green signs with street names)",
-            "- Building names, condo names, mall names",
-            "- Block/HDB numbers visible on buildings",
-            "- Bus stop numbers or MRT station names",
-            "- Shopfront names or signage",
-            "- Expressway signs (PIE, CTE, AYE, ECP, etc.)",
-            "- Landmark structures",
-            "- Postal codes on any signage",
-            "",
-            "Driver is currently near: " + (currentStreet || "unknown") + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "") + ".",
-            "",
-            "Return JSON ONLY with what you can identify:",
-            '{"road_name":"street/road name if visible or null","building":"building/condo/mall name or null","block":"block/HDB number or null","expressway":"expressway name or null","landmark":"any recognizable landmark or null","bus_stop":"bus stop number or null","best_search":"single best search term for Google Maps to find this location","confidence":"high/medium/low","clues":"brief description of what you saw"}'
-        ].join("\n");
+            "You are Ninja Co-Pilot analyzing a live camera frame for a Ninja Van delivery driver.",
+            "Driver is at: " + (currentStreet || "unknown location") + " Singapore." + modeCtx,
+            "Identify: road signs, building names, block numbers, parcel labels, hazards, parking, traffic.",
+            "Reply in " + getPreferredReplyLanguage() + ".",
+            "MAX 30 words. Action-focused. Start with most important observation.",
+            "Examples: 'Block 214 ahead, turn right.' | 'Road blocked, use alternative route.' | 'Parcel label: 10 Admiralty Street 757695.'"
+        ].join(" ");
     }
 
+    // ── CHIPS ──────────────────────────────────────────────
     var CHIPS = [
         "Cannot find address",
         "No answer",
         "Traffic jam",
         "Damaged parcel",
         "Nearest petrol station",
-        "Nearest toilet"
+        "Nearest toilet",
+        "Nearest MRT"
     ];
 
+    // ── UI text helpers ────────────────────────────────────
     function uiText(key) {
         var ai = currentLang().ai;
 
         var zh = {
-            ready: "准备好",
-            pick_language: "选择语言",
-            tap_mic_once: "按一下 🎙️",
-            scan_label: "扫描包裹标签来读取电话号码",
-            scan_street: "拍摄路牌识别街道位置",
-            ask_route: "输入目的地或说出附近地点",
+            ready: "准备好", pick_language: "选择语言", tap_mic_once: "按一下 🎙️",
+            scan_label: "扫描包裹标签", ask_route: "输入目的地或说出附近地点",
             rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
-            route_starting: "现在开始导航...",
-            route_not_found: "找不到路线。",
-            notify_arrival: "快到了，要通知客户吗？",
-            eta_about: "预计大约 ",
-            eta_minutes: " 分钟内到",
-            close: "关闭",
+            route_starting: "现在开始导航...", route_not_found: "找不到路线。",
+            notify_arrival: "快到了，要通知客户吗？", eta_about: "预计大约 ",
+            eta_minutes: " 分钟内到", close: "关闭",
             rain_near_dest: "目的地附近下雨，要通知客户延迟吗？",
-            detected_weather: "检测到目的地天气：",
-            about_5_min: "还有大约五分钟到，要通知客户吗？",
+            detected_weather: "检测到目的地天气：", about_5_min: "还有大约五分钟到，要通知客户吗？",
             raining_prompt: "目的地附近正在下雨，要通知客户可能会稍微延迟吗？",
-            arrived: "已经到达目的地。",
-            route_notif: "前方大约 ",
-            meters: " 米，",
-            customer_phone_saved: "客户号码已保存：",
-            invalid_phone: "电话号码无效。",
-            weather_unknown: "下雨",
-            processing: "Processing..."
+            arrived: "已经到达目的地。", route_notif: "前方大约 ", meters: " 米，",
+            customer_phone_saved: "客户号码已保存：", invalid_phone: "电话号码无效。",
+            weather_unknown: "下雨", processing: "Processing..."
         };
 
         var yue = {
-            ready: "準備好",
-            pick_language: "揀語言",
-            tap_mic_once: "撳一下 🎙️",
-            scan_label: "掃描包裹標籤讀取電話號碼",
-            scan_street: "影路牌識別街道位置",
-            ask_route: "輸入目的地或者講附近地點",
+            ready: "準備好", pick_language: "揀語言", tap_mic_once: "撳一下 🎙️",
+            scan_label: "掃描包裹標籤", ask_route: "輸入目的地或者講附近地點",
             rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
-            route_starting: "而家開始導航...",
-            route_not_found: "搵唔到路線。",
-            notify_arrival: "就快到，要通知客戶嗎？",
-            eta_about: "預計大約 ",
-            eta_minutes: " 分鐘內到",
-            close: "關閉",
+            route_starting: "而家開始導航...", route_not_found: "搵唔到路線。",
+            notify_arrival: "就快到，要通知客戶嗎？", eta_about: "預計大約 ",
+            eta_minutes: " 分鐘內到", close: "關閉",
             rain_near_dest: "目的地附近落雨，要通知客戶延遲嗎？",
-            detected_weather: "檢測到目的地天氣：",
-            about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
+            detected_weather: "檢測到目的地天氣：", about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
             raining_prompt: "目的地附近正喺落雨，要通知客戶可能會遲少少嗎？",
-            arrived: "已經到咗目的地。",
-            route_notif: "前面大約 ",
-            meters: " 米，",
-            customer_phone_saved: "客戶電話已保存：",
-            invalid_phone: "電話號碼無效。",
-            weather_unknown: "落雨",
-            processing: "Processing..."
+            arrived: "已經到咗目的地。", route_notif: "前面大約 ", meters: " 米，",
+            customer_phone_saved: "客戶電話已保存：", invalid_phone: "電話號碼無效。",
+            weather_unknown: "落雨", processing: "Processing..."
         };
 
         var en = {
-            ready: "Ready",
-            pick_language: "Pick language",
-            tap_mic_once: "Tap 🎙️ once",
-            scan_label: "Scan parcel label to capture phone",
-            scan_street: "Snap road sign to identify location",
-            ask_route: "Ask for a route",
-            rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
-            route_starting: "Getting directions...",
-            route_not_found: "Route not found.",
-            notify_arrival: "Near destination. Notify customer?",
-            eta_about: "Estimated arrival in about ",
-            eta_minutes: " minutes",
-            close: "Close",
+            ready: "Ready", pick_language: "Pick language", tap_mic_once: "Tap 🎙️ once",
+            scan_label: "Scan parcel label", ask_route: "Ask for a route",
+            rain_popup_note: "Rain delay popup appears automatically if destination is raining",
+            route_starting: "Getting directions...", route_not_found: "Route not found.",
+            notify_arrival: "Near destination. Notify customer?", eta_about: "Estimated arrival in about ",
+            eta_minutes: " minutes", close: "Close",
             rain_near_dest: "Rain near destination. Send delay notice to customer?",
-            detected_weather: "Detected destination weather: ",
-            about_5_min: "About 5 minutes to arrival. Notify customer?",
+            detected_weather: "Detected destination weather: ", about_5_min: "About 5 minutes to arrival. Notify customer?",
             raining_prompt: "It is raining near the destination. Send a delay notice to the customer?",
-            arrived: "You have arrived.",
-            route_notif: "In ",
-            meters: " meters, ",
-            customer_phone_saved: "Customer phone saved: ",
-            invalid_phone: "Invalid phone number.",
-            weather_unknown: "rain",
-            processing: "Processing..."
+            arrived: "You have arrived.", route_notif: "In ", meters: " meters, ",
+            customer_phone_saved: "Customer phone saved: ", invalid_phone: "Invalid phone number.",
+            weather_unknown: "rain", processing: "Processing..."
         };
 
         var map;
@@ -331,48 +289,307 @@
         return map[key] || en[key] || key;
     }
 
+    // ── Transport mode detection ───────────────────────────
+    function detectTransportMode(speedMs) {
+        if (speedMs === null || speedMs === undefined || speedMs < 0) return "unknown";
+        if (speedMs < 1.4)  return "walking"; // < ~5 km/h
+        if (speedMs < 9)    return "mrt";     // 5-32 km/h (MRT/bus between stops or slow traffic)
+        return "driving";                      // > 32 km/h
+    }
+
+    var TRANSPORT_LABELS = {
+        driving: "🚗 DRIVE",
+        walking: "🚶 WALK",
+        mrt:     "🚇 MRT/BUS",
+        unknown: "🚗 --"
+    };
+
+    var TRANSPORT_CLASSES = {
+        driving: "mode-badge mode-driving",
+        walking: "mode-badge mode-walking",
+        mrt:     "mode-badge mode-mrt",
+        unknown: "mode-badge mode-unknown"
+    };
+
+    function updateTransportMode(speedMs) {
+        var newMode = detectTransportMode(speedMs);
+        if (newMode === transportMode) return;
+        transportMode = newMode;
+
+        // Auto-set routing mode
+        if (transportMode === "walking" || transportMode === "mrt") {
+            routingMode = "walking";
+            setMapModePill("walking");
+        } else if (transportMode === "driving") {
+            routingMode = "driving";
+            setMapModePill("driving");
+        }
+
+        modeBadge.className = TRANSPORT_CLASSES[transportMode] || TRANSPORT_CLASSES.unknown;
+        modeBadge.textContent = TRANSPORT_LABELS[transportMode] || TRANSPORT_LABELS.unknown;
+    }
+
+    // ── Weather widget ─────────────────────────────────────
+    var WEATHER_ICONS = {
+        sunny: "☀️", clear: "☀️", cloud: "⛅", overcast: "☁️",
+        rain: "🌧️", drizzle: "🌦️", shower: "🌧️", storm: "⛈️",
+        thunder: "⛈️", fog: "🌫️", mist: "🌫️", haze: "🌫️"
+    };
+
+    function weatherIconFor(desc) {
+        var d = String(desc || "").toLowerCase();
+        for (var k in WEATHER_ICONS) {
+            if (d.indexOf(k) >= 0) return WEATHER_ICONS[k];
+        }
+        return "🌤";
+    }
+
+    function updateWeatherWidget(data) {
+        if (!data || data.status === "weather_unavailable") return;
+        var desc = data.description || "";
+        var temp = data.temp_c != null ? Math.round(data.temp_c) + "°C" : "--°C";
+        wxIcon.textContent = weatherIconFor(desc);
+        wxTemp.textContent = temp;
+        wxDesc.textContent = desc || "--";
+        wxBadge.style.display = "flex";
+        wxBadge.className = "wx-badge" + (data.is_rain ? " rain" : "");
+    }
+
+    function maybeRefreshWeather() {
+        if (!gpsPos) return;
+        var now = Date.now();
+        if (now - lastWeatherRefresh < WEATHER_REFRESH_MS) return;
+        lastWeatherRefresh = now;
+        apiWeather(gpsPos.lat, gpsPos.lng, function (err, data) {
+            if (!err && data) updateWeatherWidget(data);
+        });
+    }
+
+    // ── Leaflet map ────────────────────────────────────────
+    function initLeafletMap() {
+        if (leafletMap || !window.L) return;
+
+        leafletMap = L.map("liveMap", {
+            zoomControl: false,
+            attributionControl: true
+        });
+
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            maxZoom: 19,
+            attribution: "© OSM"
+        }).addTo(leafletMap);
+
+        if (gpsPos) {
+            leafletMap.setView([gpsPos.lat, gpsPos.lng], 16);
+            addOrMoveDriverMarker(gpsPos.lat, gpsPos.lng);
+        }
+
+        mapZoomIn.addEventListener("click",  function () { leafletMap.zoomIn(); });
+        mapZoomOut.addEventListener("click", function () { leafletMap.zoomOut(); });
+        mapCenter.addEventListener("click",  function () {
+            if (gpsPos) leafletMap.setView([gpsPos.lat, gpsPos.lng], 16);
+        });
+        mapClose.addEventListener("click",   function () { hideMap(); });
+    }
+
+    function driverIcon() {
+        return L.divIcon({
+            html: '<div style="width:14px;height:14px;border-radius:50%;background:#E31837;border:3px solid #fff;box-shadow:0 0 10px rgba(227,24,55,0.9)"></div>',
+            iconSize: [14,14], iconAnchor: [7,7], className: ""
+        });
+    }
+
+    function destIcon() {
+        return L.divIcon({
+            html: '<div style="font-size:22px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6))">📦</div>',
+            iconSize: [22,22], iconAnchor: [11,22], className: ""
+        });
+    }
+
+    function addOrMoveDriverMarker(lat, lng) {
+        if (!leafletMap || !window.L) return;
+        if (mapMarker) {
+            mapMarker.setLatLng([lat, lng]);
+        } else {
+            mapMarker = L.marker([lat, lng], { icon: driverIcon() }).addTo(leafletMap);
+        }
+    }
+
+    function drawRouteOnMap(route) {
+        if (!leafletMap || !window.L) return;
+        if (!route || !route.geometry || !route.geometry.coordinates) return;
+
+        if (routeLayer) { leafletMap.removeLayer(routeLayer); routeLayer = null; }
+        if (destMarker) { leafletMap.removeLayer(destMarker); destMarker = null; }
+
+        var coords = route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
+
+        routeLayer = L.polyline(coords, {
+            color: "#E31837",
+            weight: 4,
+            opacity: 0.85
+        }).addTo(leafletMap);
+
+        if (route.dest_lat != null && route.dest_lng != null) {
+            destMarker = L.marker([route.dest_lat, route.dest_lng], { icon: destIcon() }).addTo(leafletMap);
+        }
+
+        var bounds = routeLayer.getBounds();
+        if (bounds.isValid()) {
+            leafletMap.fitBounds(bounds, { padding: [30, 30] });
+        }
+    }
+
+    function clearRouteFromMap() {
+        if (!leafletMap) return;
+        if (routeLayer)  { leafletMap.removeLayer(routeLayer);  routeLayer = null; }
+        if (destMarker)  { leafletMap.removeLayer(destMarker);  destMarker = null; }
+    }
+
+    function showMap() {
+        if (!mapVisible) {
+            mapPanel.classList.remove("hidden");
+            mapVisible = true;
+            mapBtn.classList.add("on");
+            if (!leafletMap && window.L) {
+                setTimeout(initLeafletMap, 50);
+            } else if (leafletMap) {
+                setTimeout(function () { leafletMap.invalidateSize(); }, 100);
+            }
+        }
+    }
+
+    function hideMap() {
+        mapPanel.classList.add("hidden");
+        mapVisible = false;
+        mapBtn.classList.remove("on");
+    }
+
+    function setMapModePill(mode) {
+        if (!mpDriving || !mpWalking) return;
+        if (mode === "walking") {
+            mpDriving.classList.remove("active");
+            mpWalking.classList.add("active");
+        } else {
+            mpWalking.classList.remove("active");
+            mpDriving.classList.add("active");
+        }
+    }
+
+    // ── Live Camera ────────────────────────────────────────
+    function openLiveCam() {
+        if (camActive) return;
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "environment", width: { ideal: 1280 } }
+        }).then(function (stream) {
+            camStream = stream;
+            camVideo.srcObject = stream;
+            camOverlay.classList.add("active");
+            camActive = true;
+            camAiReply.textContent = "Tap Analyze to get AI assistance...";
+        }).catch(function (err) {
+            addBubble("assistant", "Camera access denied: " + err.message);
+        });
+    }
+
+    function closeLiveCam() {
+        camActive = false;
+        if (camAutoOn) toggleCamAuto();
+        if (camStream) {
+            camStream.getTracks().forEach(function (t) { t.stop(); });
+            camStream = null;
+        }
+        camVideo.srcObject = null;
+        camOverlay.classList.remove("active");
+    }
+
+    function captureCamFrame(cb) {
+        if (!camActive || !camVideo) { cb(null); return; }
+        var canvas = document.createElement("canvas");
+        canvas.width  = camVideo.videoWidth  || 640;
+        canvas.height = camVideo.videoHeight || 480;
+        var ctx = canvas.getContext("2d");
+        ctx.drawImage(camVideo, 0, 0, canvas.width, canvas.height);
+
+        var q = 0.75;
+        var b64 = canvas.toDataURL("image/jpeg", q);
+        while (b64.length * 0.75 > MAX_BYTES && q > 0.2) {
+            q -= 0.1;
+            b64 = canvas.toDataURL("image/jpeg", q);
+        }
+        cb(b64.split(",")[1]);
+    }
+
+    function analyzeCamera() {
+        if (!camActive) return;
+        camStatus.textContent = "🔍 Analyzing...";
+        captureCamFrame(function (base64) {
+            if (!base64) { camStatus.textContent = "Camera not ready"; return; }
+            apiScanCam(base64, getLiveCamPrompt(), function (err, reply) {
+                if (err) {
+                    camAiReply.textContent = "Error: " + err;
+                    camStatus.textContent = "Analysis failed";
+                    return;
+                }
+                camAiReply.textContent = reply || "(No response)";
+                camStatus.textContent = "📹 LIVE — " + new Date().toLocaleTimeString();
+
+                // Also send to main chat
+                if (reply && !busy) {
+                    addBubble("assistant", "📹 " + reply);
+                    detectLang(reply);
+                    speak(tuneReplyByLanguage(reply));
+                }
+            });
+        });
+    }
+
+    function toggleCamAuto() {
+        camAutoOn = !camAutoOn;
+        if (camAutoOn) {
+            camAutoToggle.textContent = "🔄 Auto every 8s: ON";
+            camAutoToggle.classList.add("on");
+            analyzeCamera();
+            camAutoInterval = setInterval(analyzeCamera, 8000);
+        } else {
+            camAutoToggle.textContent = "🔄 Auto every 8s: OFF";
+            camAutoToggle.classList.remove("on");
+            clearInterval(camAutoInterval);
+            camAutoInterval = null;
+        }
+    }
+
+    function apiScanCam(base64, prompt, cb) {
+        fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system: getSysPrompt(),
+                image_base64: base64,
+                ocr_prompt: prompt
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    // ── Cantonese normalisation ────────────────────────────
     function normalizeCantoneseText(text) {
         var t = String(text || "").trim();
         if (!t) return t;
-
         var replacements = [
-            [/最近的/g, "最近嘅"],
-            [/附近的/g, "附近嘅"],
-            [/你的/g, "你嘅"],
-            [/您的/g, "你嘅"],
-            [/当前位置/g, "而家位置"],
-            [/当前的位置/g, "而家位置"],
-            [/现在/g, "而家"],
-            [/位于/g, "喺"],
-            [/这里/g, "呢度"],
-            [/那边/g, "嗰邊"],
-            [/在这里/g, "喺呢度"],
-            [/在那边/g, "喺嗰邊"],
-            [/在前面/g, "喺前面"],
-            [/在附近/g, "喺附近"],
-            [/在/g, "喺"],
-            [/可以前往/g, "可以去"],
-            [/请前往/g, "請去"],
-            [/向前走/g, "向前行"],
-            [/直走/g, "直行"],
-            [/左转/g, "左轉"],
-            [/右转/g, "右轉"],
-            [/掉头/g, "調頭"],
-            [/到达/g, "到咗"],
-            [/到了/g, "到咗"],
-            [/已到达/g, "已經到咗"],
-            [/厕所/g, "洗手間"],
-            [/卫生间/g, "洗手間"],
-            [/没有/g, "冇"],
-            [/无法/g, "冇辦法"],
-            [/是否/g, "係咪"],
-            [/正在/g, "而家正喺"]
+            [/最近的/g,"最近嘅"],[/附近的/g,"附近嘅"],[/你的/g,"你嘅"],[/您的/g,"你嘅"],
+            [/当前位置/g,"而家位置"],[/当前的位置/g,"而家位置"],[/现在/g,"而家"],
+            [/位于/g,"喺"],[/这里/g,"呢度"],[/那边/g,"嗰邊"],[/在这里/g,"喺呢度"],
+            [/在那边/g,"喺嗰邊"],[/在前面/g,"喺前面"],[/在附近/g,"喺附近"],[/在/g,"喺"],
+            [/可以前往/g,"可以去"],[/请前往/g,"請去"],[/向前走/g,"向前行"],
+            [/直走/g,"直行"],[/左转/g,"左轉"],[/右转/g,"右轉"],[/掉头/g,"調頭"],
+            [/到达/g,"到咗"],[/到了/g,"到咗"],[/已到达/g,"已經到咗"],
+            [/厕所/g,"洗手間"],[/卫生间/g,"洗手間"],[/没有/g,"冇"],
+            [/无法/g,"冇辦法"],[/是否/g,"係咪"],[/正在/g,"而家正喺"]
         ];
-
-        replacements.forEach(function (pair) {
-            t = t.replace(pair[0], pair[1]);
-        });
-
+        replacements.forEach(function (p) { t = t.replace(p[0], p[1]); });
         return t;
     }
 
@@ -382,6 +599,7 @@
         return t;
     }
 
+    // ── Phone helpers ──────────────────────────────────────
     function sanitizePhone(raw) {
         var s = String(raw || "").replace(/[^\d+]/g, "");
         if (!s) return "";
@@ -397,23 +615,11 @@
         return true;
     }
 
-    function getCustomerPhoneForSms() {
-        return customerPhone.replace(/^\+/, "");
-    }
+    function getCustomerPhoneForSms()      { return customerPhone.replace(/^\+/, ""); }
+    function getCustomerPhoneForWhatsApp() { return customerPhone.replace(/^\+/, ""); }
 
-    function getCustomerPhoneForWhatsApp() {
-        return customerPhone.replace(/^\+/, "");
-    }
-
-    // ALWAYS ENGLISH
-    function getArrivalMessage() {
-        return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
-    }
-
-    // ALWAYS ENGLISH
-    function getRainDelayMessage() {
-        return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
-    }
+    function getArrivalMessage()  { return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you."; }
+    function getRainDelayMessage(){ return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience."; }
 
     function openSms(phone, message) {
         var p = String(phone || "");
@@ -428,55 +634,133 @@
         window.open("https://wa.me/" + p + "?text=" + text, "_blank");
     }
 
-    function removeArrivalCard() { removeEl("arrivalNotifyCard"); }
-    function removeRainCard() { removeEl("rainDelayCard"); }
+    // ── Arrival / rain cards ───────────────────────────────
+    // ── Auto-WhatsApp countdown ────────────────────────────
+    var autoWaTimer = null;
+    var autoWaCountdown = 0;
+
+    function clearAutoWaTimer() {
+        if (autoWaTimer) { clearInterval(autoWaTimer); autoWaTimer = null; }
+    }
+
+    function fireAutoWhatsApp(phone, msg) {
+        var p = String(phone || "").replace(/[^\d]/g, "");
+        var text = encodeURIComponent(msg || "");
+        window.location.href = "whatsapp://send?phone=" + p + "&text=" + text;
+        setTimeout(function () {
+            try { window.open("https://wa.me/" + p + "?text=" + text, "_blank"); } catch(e) {}
+        }, 1400);
+    }
+
+        function removeArrivalCard() { clearAutoWaTimer(); removeEl("arrivalNotifyCard"); }
+    function removeRainCard()    { removeEl("rainDelayCard"); }
 
     function showArrivalNotifyCard() {
         removeArrivalCard();
+        clearAutoWaTimer();
 
         var mins = activeRoute ? Math.max(1, Math.round((activeRoute.total_duration || 0) / 60)) : 5;
-        var msg = getArrivalMessage(); // English only
-        var title = uiText("notify_arrival");
-        var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
+        var msg  = getArrivalMessage();
         var hasPhone = !!customerPhone;
+        var AUTO_SECS = 5;
+        autoWaCountdown = AUTO_SECS;
 
         var div = document.createElement("div");
         div.id = "arrivalNotifyCard";
-        div.innerHTML =
-            '<div style="background:rgba(227,24,55,0.10);border:1px solid rgba(227,24,55,0.28);border-radius:14px;padding:12px;margin:8px 0;">' +
-                '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(etaText) + '</div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
-                '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
-                '<div style="display:flex;gap:8px;">' +
-                    (hasPhone ? '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
-                    (hasPhone ? '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
-                    '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
-                '</div>' +
-            '</div>';
 
+        function renderCard(n) {
+            var ringHtml = hasPhone
+                ? '<div style="text-align:center;margin-bottom:10px;">' +
+                      '<div style="display:inline-flex;align-items:center;justify-content:center;' +
+                               'width:56px;height:56px;border-radius:50%;border:3px solid #25D366;' +
+                               'background:rgba(37,211,102,0.12);font-size:22px;font-weight:900;color:#25D366;">' +
+                          '<span id="waCountdownNum">' + n + '</span>' +
+                      '</div>' +
+                      '<div style="color:#25D366;font-size:10px;font-weight:700;margin-top:3px;letter-spacing:0.5px;">' +
+                          '⚡ AUTO-SENDING WhatsApp' +
+                      '</div>' +
+                  '</div>'
+                : "";
+
+            div.innerHTML =
+                '<div style="background:rgba(37,211,102,0.08);border:1.5px solid rgba(37,211,102,0.30);' +
+                          'border-radius:14px;padding:12px;margin:8px 0;">' +
+                    '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:4px;">📍 ' +
+                        esc(uiText("notify_arrival")) + '</div>' +
+                    '<div style="color:rgba(255,255,255,0.55);font-size:11px;margin-bottom:8px;">' +
+                        esc(uiText("eta_about") + mins + uiText("eta_minutes")) +
+                        (hasPhone
+                            ? ' · 📞 <span style="color:#fff;font-weight:700;">' + esc(customerPhone) + '</span>'
+                            : ' · <span style="color:#ff6b6b;">No phone — scan label first</span>') +
+                    '</div>' +
+                    ringHtml +
+                    '<div style="color:rgba(255,255,255,0.6);font-size:11px;margin-bottom:5px;">Message (English):</div>' +
+                    '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);' +
+                              'border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                    '<div style="display:flex;gap:6px;">' +
+                        (hasPhone ? '<button id="arrivalWaNow" style="flex:2;padding:10px;border-radius:10px;border:none;' +
+                                              'background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">✅ Send Now</button>' : '') +
+                        (hasPhone ? '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;' +
+                                              'background:rgba(255,255,255,0.08);color:#fff;font-size:11px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
+                        '<button id="arrivalCancelBtn" style="flex:1;padding:10px;border-radius:10px;border:none;' +
+                                   'background:rgba(227,24,55,0.15);color:#ff6b6b;font-size:11px;font-weight:700;cursor:pointer;">✕ Cancel</button>' +
+                    '</div>' +
+                '</div>';
+        }
+
+        renderCard(autoWaCountdown);
         chatEl.appendChild(div);
         scrollDown();
 
-        if (hasPhone) {
-            document.getElementById("arrivalSmsBtn").addEventListener("click", function () {
-                openSms(getCustomerPhoneForSms(), msg);
+        function bindButtons() {
+            var waNow    = document.getElementById("arrivalWaNow");
+            var smsBtn   = document.getElementById("arrivalSmsBtn");
+            var cancelBtn= document.getElementById("arrivalCancelBtn");
+
+            if (waNow) waNow.addEventListener("click", function () {
+                clearAutoWaTimer();
+                fireAutoWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+                removeArrivalCard();
+                addBubble("assistant", "✅ WhatsApp opening for customer.");
             });
-            document.getElementById("arrivalWaBtn").addEventListener("click", function () {
-                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+            if (smsBtn) smsBtn.addEventListener("click", function () {
+                clearAutoWaTimer();
+                openSms(getCustomerPhoneForSms(), msg);
+                removeArrivalCard();
+            });
+            if (cancelBtn) cancelBtn.addEventListener("click", function () {
+                clearAutoWaTimer();
+                removeArrivalCard();
+                addBubble("assistant", "WhatsApp cancelled by driver.");
             });
         }
 
-        document.getElementById("arrivalCloseBtn").addEventListener("click", function () {
-            removeArrivalCard();
-        });
+        bindButtons();
+
+        // Countdown auto-fires if driver doesn't cancel
+        if (hasPhone) {
+            autoWaTimer = setInterval(function () {
+                autoWaCountdown--;
+                var numEl = document.getElementById("waCountdownNum");
+                if (numEl) numEl.textContent = Math.max(0, autoWaCountdown);
+
+                if (autoWaCountdown <= 0) {
+                    clearAutoWaTimer();
+                    var cardExists = document.getElementById("arrivalNotifyCard");
+                    if (cardExists) {
+                        removeArrivalCard();
+                        fireAutoWhatsApp(getCustomerPhoneForWhatsApp(), msg);
+                        addBubble("assistant", "✅ WhatsApp auto-sent to customer.");
+                        speak("WhatsApp sent to customer.");
+                    }
+                }
+            }, 1000);
+        }
     }
 
     function showRainDelayCard(weatherInfo) {
         removeRainCard();
-
-        var msg = getRainDelayMessage(); // English only
+        var msg = getRainDelayMessage();
         var title = uiText("rain_near_dest");
         var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
         var hasPhone = !!customerPhone;
@@ -488,104 +772,62 @@
                 '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(detail) + '</div>' +
                 '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Customer Phone: <span style="color:#fff;font-weight:700;">' + esc(customerPhone || "Not detected") + '</span></div>' +
-                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">English message:</div>' +
                 '<div style="color:#fff;font-size:12px;line-height:1.5;background:rgba(255,255,255,0.05);border-radius:10px;padding:10px;margin-bottom:10px;">' + esc(msg) + '</div>' +
                 '<div style="display:flex;gap:8px;">' +
                     (hasPhone ? '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' : '') +
-                    (hasPhone ? '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
+                    (hasPhone ? '<button id="rainWaBtn"  style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' : '') +
                     '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
                 '</div>' +
             '</div>';
-
         chatEl.appendChild(div);
         scrollDown();
 
         if (hasPhone) {
-            document.getElementById("rainSmsBtn").addEventListener("click", function () {
-                openSms(getCustomerPhoneForSms(), msg);
-            });
-            document.getElementById("rainWaBtn").addEventListener("click", function () {
-                openWhatsApp(getCustomerPhoneForWhatsApp(), msg);
-            });
+            document.getElementById("rainSmsBtn").addEventListener("click", function () { openSms(getCustomerPhoneForSms(), msg); });
+            document.getElementById("rainWaBtn").addEventListener("click",  function () { openWhatsApp(getCustomerPhoneForWhatsApp(), msg); });
         }
-
-        document.getElementById("rainCloseBtn").addEventListener("click", function () {
-            removeRainCard();
-        });
+        document.getElementById("rainCloseBtn").addEventListener("click", removeRainCard);
     }
 
+    // ── Speech ─────────────────────────────────────────────
     function unlockSpeech() {
         if (!window.speechSynthesis || speechUnlocked) return;
         try {
             var u = new SpeechSynthesisUtterance(" ");
             u.volume = 0;
-            u.onend = function () { speechUnlocked = true; };
-            u.onerror = function () { speechUnlocked = true; };
+            u.onend = u.onerror = function () { speechUnlocked = true; };
             window.speechSynthesis.speak(u);
             window.speechSynthesis.cancel();
             speechUnlocked = true;
-        } catch (e) {}
+        } catch(e) {}
     }
 
     function pickVoiceByTargets(targets) {
         if (!window.speechSynthesis) return null;
         var voices = window.speechSynthesis.getVoices() || [];
         if (!voices.length) return null;
-
-        var exact = voices.find(function (v) {
-            var lang = (v.lang || "").toLowerCase();
-            return targets.some(function (t) {
-                return lang === t.toLowerCase();
-            });
-        });
-        if (exact) return exact;
-
-        var partial = voices.find(function (v) {
-            var lang = (v.lang || "").toLowerCase();
-            return targets.some(function (t) {
-                return lang.indexOf(t.toLowerCase()) === 0;
-            });
-        });
-        if (partial) return partial;
-
-        return null;
+        return voices.find(function (v) { return targets.some(function (t) { return (v.lang||"").toLowerCase() === t.toLowerCase(); }); })
+            || voices.find(function (v) { return targets.some(function (t) { return (v.lang||"").toLowerCase().indexOf(t.toLowerCase()) === 0; }); })
+            || null;
     }
 
     function pickCantoneseVoice() {
         if (!window.speechSynthesis) return null;
         var voices = window.speechSynthesis.getVoices() || [];
-        if (!voices.length) return null;
-
-        return voices.find(function (v) {
-            var s = ((v.name || "") + " " + (v.lang || "")).toLowerCase();
-            return /yue|cantonese|hong kong|zh-hk/.test(s);
-        }) || null;
+        return voices.find(function (v) { return /yue|cantonese|hong kong|zh-hk/.test(((v.name||"")+" "+(v.lang||"")).toLowerCase()); }) || null;
     }
 
     function stripEmojis(t) {
-        return String(t || "")
-            .replace(/[\u{1F000}-\u{1FFFF}]/gu, "")
-            .replace(/[\u{2600}-\u{27BF}]/gu, "")
-            .replace(/[\u{FE00}-\u{FEFF}]/gu, "")
-            .replace(/[\u{1F900}-\u{1FAFF}]/gu, "")
-            .replace(/[*_#\[\]]/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
+        return String(t||"").replace(/[\u{1F000}-\u{1FFFF}]/gu,"").replace(/[\u{2600}-\u{27BF}]/gu,"")
+            .replace(/[\u{FE00}-\u{FEFF}]/gu,"").replace(/[\u{1F900}-\u{1FAFF}]/gu,"")
+            .replace(/[*_#\[\]]/g,"").replace(/\s+/g," ").trim();
     }
 
     function detectLang(text) {
         var t = String(text || "");
-
-        if (currentLang().code === "zh-HK") { lastDetectedLang = "zh-HK"; return; }
-        if (currentLang().code === "zh-TW") { lastDetectedLang = "zh-TW"; return; }
-        if (currentLang().code === "zh-CN") { lastDetectedLang = "zh-CN"; return; }
-        if (currentLang().code === "ms-MY") { lastDetectedLang = "ms"; return; }
-        if (currentLang().code === "ta-IN") { lastDetectedLang = "ta"; return; }
-        if (currentLang().code === "th-TH") { lastDetectedLang = "th"; return; }
-        if (currentLang().code === "vi-VN") { lastDetectedLang = "vi"; return; }
-        if (currentLang().code === "id-ID") { lastDetectedLang = "id"; return; }
-        if (currentLang().code === "ko-KR") { lastDetectedLang = "ko"; return; }
-        if (currentLang().code === "ja-JP") { lastDetectedLang = "ja"; return; }
+        var code = currentLang().code;
+        var codeToLang = { "zh-HK":"zh-HK","zh-TW":"zh-TW","zh-CN":"zh-CN","ms-MY":"ms","ta-IN":"ta","th-TH":"th","vi-VN":"vi","id-ID":"id","ko-KR":"ko","ja-JP":"ja" };
+        if (codeToLang[code]) { lastDetectedLang = codeToLang[code]; return; }
 
         if (/[\u0e00-\u0e7f]/.test(t)) { lastDetectedLang = "th"; return; }
         if (/[\uac00-\ud7af]/.test(t)) { lastDetectedLang = "ko"; return; }
@@ -596,107 +838,57 @@
         if (/[\u4e00-\u9fff]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
         if (/\b(anda|saya|tak|boleh|dengan|untuk|lah|bro)\b/i.test(t)) { lastDetectedLang = "ms"; return; }
         if (/\b(kamu|tidak|bisa|dengan|untuk|ya)\b/i.test(t)) { lastDetectedLang = "id"; return; }
-        if (/\b(ako|mo|ng|mga|na|po|ito|ang)\b/i.test(t)) { lastDetectedLang = "fil"; return; }
         if (/\b(bạn|tôi|không|được|của|và|cho)\b/i.test(t)) { lastDetectedLang = "vi"; return; }
-
         lastDetectedLang = "en";
     }
 
     function speak(text, onDone) {
-        if (!window.speechSynthesis || !text) {
-            if (onDone) onDone();
-            return;
-        }
-
+        if (!window.speechSynthesis || !text) { if (onDone) onDone(); return; }
         try {
             window.speechSynthesis.cancel();
             clearInterval(ttsTimer);
-
             var cleanText = stripEmojis(tuneReplyByLanguage(text));
-            if (!cleanText) {
-                if (onDone) onDone();
-                return;
-            }
+            if (!cleanText) { if (onDone) onDone(); return; }
 
             var langKey = lastDetectedLang || currentLang().code || "en";
             var targets = LANG_TTS[langKey] || LANG_TTS.en;
-            var chosenVoice = null;
+            var chosenVoice = langKey === "zh-HK"
+                ? (pickVoiceByTargets(targets) || pickCantoneseVoice())
+                : pickVoiceByTargets(targets);
 
-            if (langKey === "zh-HK") {
-                chosenVoice = pickVoiceByTargets(targets) || pickCantoneseVoice();
-                if (!chosenVoice) {
-                    if (onDone) onDone();
-                    return;
-                }
-            } else {
-                chosenVoice = pickVoiceByTargets(targets);
-            }
-
-            if (!chosenVoice) {
-                chosenVoice = pickVoiceByTargets(LANG_TTS.en);
-            }
+            if (!chosenVoice) chosenVoice = pickVoiceByTargets(LANG_TTS.en);
 
             var u = new SpeechSynthesisUtterance(cleanText);
             u.rate = isCantoneseMode() ? 0.90 : 0.95;
-            u.pitch = 1;
-            u.volume = 1;
+            u.pitch = 1; u.volume = 1;
+            if (chosenVoice) { u.voice = chosenVoice; u.lang = chosenVoice.lang || currentLang().code; }
+            else u.lang = currentLang().code;
 
-            if (chosenVoice) {
-                u.voice = chosenVoice;
-                u.lang = chosenVoice.lang || currentLang().code;
-            } else {
-                u.lang = currentLang().code;
-            }
-
-            u.onstart = function () {
-                isSpeaking = true;
-                sbEl.style.display = "flex";
-            };
-
-            u.onend = function () {
-                isSpeaking = false;
-                sbEl.style.display = "none";
-                clearInterval(ttsTimer);
-                if (onDone) onDone();
-            };
-
-            u.onerror = function () {
-                isSpeaking = false;
-                sbEl.style.display = "none";
-                clearInterval(ttsTimer);
-                if (onDone) onDone();
+            u.onstart = function () { isSpeaking = true; sbEl.style.display = "flex"; };
+            u.onend = u.onerror = function () {
+                isSpeaking = false; sbEl.style.display = "none";
+                clearInterval(ttsTimer); if (onDone) onDone();
             };
 
             window.speechSynthesis.speak(u);
-            try { window.speechSynthesis.resume(); } catch (e) {}
-
-            ttsTimer = setInterval(function () {
-                try { window.speechSynthesis.resume(); } catch (e) {}
-            }, 2000);
-
-        } catch (e) {
-            isSpeaking = false;
-            sbEl.style.display = "none";
-            clearInterval(ttsTimer);
-            if (onDone) onDone();
+            try { window.speechSynthesis.resume(); } catch(e) {}
+            ttsTimer = setInterval(function () { try { window.speechSynthesis.resume(); } catch(e) {} }, 2000);
+        } catch(e) {
+            isSpeaking = false; sbEl.style.display = "none";
+            clearInterval(ttsTimer); if (onDone) onDone();
         }
     }
 
     function stopSpeak() {
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-        }
-        isSpeaking = false;
-        sbEl.style.display = "none";
-        clearInterval(ttsTimer);
+        if (window.speechSynthesis) try { window.speechSynthesis.cancel(); } catch(e) {}
+        isSpeaking = false; sbEl.style.display = "none"; clearInterval(ttsTimer);
     }
 
     if (window.speechSynthesis) {
-        window.speechSynthesis.onvoiceschanged = function () {
-            try { window.speechSynthesis.getVoices(); } catch (e) {}
-        };
+        window.speechSynthesis.onvoiceschanged = function () { try { window.speechSynthesis.getVoices(); } catch(e) {} };
     }
 
+    // ── Language bar ───────────────────────────────────────
     function renderLangBar() {
         langBar.innerHTML = "";
         LANGUAGES.forEach(function (lang, i) {
@@ -715,6 +907,7 @@
         });
     }
 
+    // ── Image compression ──────────────────────────────────
     function compressImage(file, cb) {
         var reader = new FileReader();
         reader.onload = function (e) {
@@ -722,29 +915,15 @@
             img.onload = function () {
                 var w = img.width, h = img.height;
                 if (w > MAX_DIM || h > MAX_DIM) {
-                    var r = Math.min(MAX_DIM / w, MAX_DIM / h);
-                    w = Math.round(w * r);
-                    h = Math.round(h * r);
+                    var r = Math.min(MAX_DIM/w, MAX_DIM/h);
+                    w = Math.round(w*r); h = Math.round(h*r);
                 }
-
                 var c = document.createElement("canvas");
-                c.width = w;
-                c.height = h;
+                c.width = w; c.height = h;
                 c.getContext("2d").drawImage(img, 0, 0, w, h);
-
                 var q = 0.8, b64 = c.toDataURL("image/jpeg", q);
-                while (b64.length * 0.75 > MAX_BYTES && q > 0.2) {
-                    q -= 0.1;
-                    b64 = c.toDataURL("image/jpeg", q);
-                }
-
-                cb(null, {
-                    base64: b64.split(",")[1],
-                    preview: b64,
-                    w: w,
-                    h: h,
-                    kb: Math.round((b64.length * 3) / 4 / 1024)
-                });
+                while (b64.length*0.75 > MAX_BYTES && q > 0.2) { q -= 0.1; b64 = c.toDataURL("image/jpeg", q); }
+                cb(null, { base64: b64.split(",")[1], preview: b64, w: w, h: h, kb: Math.round((b64.length*3)/4/1024) });
             };
             img.onerror = function () { cb("Failed"); };
             img.src = e.target.result;
@@ -753,151 +932,75 @@
         reader.readAsDataURL(file);
     }
 
+    // ── API calls ──────────────────────────────────────────
     function apiChat(text, cb) {
         fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                system: getSysPrompt(),
-                messages: [{ role: "user", content: text }]
-            })
+            body: JSON.stringify({ system: getSysPrompt(), messages: [{ role: "user", content: text }] })
         })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-            .catch(function (e) { cb(e.message); });
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+        .catch(function (e) { cb(e.message); });
     }
 
     function apiScan(base64, cb) {
         fetch("/api/scan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                system: getSysPrompt(),
-                image_base64: base64,
-                ocr_prompt: getOcrPrompt()
-            })
+            body: JSON.stringify({ system: getSysPrompt(), image_base64: base64, ocr_prompt: getOcrPrompt() })
         })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-            .catch(function (e) { cb(e.message); });
-    }
-
-    function apiScanStreet(base64, cb) {
-        fetch("/api/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                system: "You are a Singapore street and location identifier. Return only valid JSON.",
-                image_base64: base64,
-                ocr_prompt: getStreetPrompt()
-            })
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-            .catch(function (e) { cb(e.message); });
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+        .catch(function (e) { cb(e.message); });
     }
 
     function apiTranscribe(audioBase64, cb) {
         fetch("/api/transcribe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                audio_base64: audioBase64,
-                language: currentLang().code
-            })
+            body: JSON.stringify({ audio_base64: audioBase64, language: currentLang().code })
         })
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(d.error ? String(d.error) : null, d.text || ""); })
-            .catch(function (e) { cb(e.message); });
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.text || ""); })
+        .catch(function (e) { cb(e.message); });
     }
 
     function apiWeather(lat, lng, cb) {
         fetch("/api/weather?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng))
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(null, d); })
-            .catch(function (e) { cb(e.message); });
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(null, d); })
+        .catch(function (e) { cb(e.message); });
     }
 
-    function apiPoiSearch(query, cb) {
-        var params = "q=" + encodeURIComponent(query);
-        if (gpsPos) {
-            params += "&lat=" + gpsPos.lat + "&lng=" + gpsPos.lng;
-        }
-        params += "&limit=3";
-
-        fetch("/api/poi-search?" + params)
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(null, d); })
-            .catch(function (e) { cb(e.message); });
-    }
-
-    function fetchRouteByCoords(destLat, destLng, destDisplay, cb) {
-        if (!gpsPos) {
-            cb("No GPS");
-            return;
-        }
-
-        fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng + "&to_lat=" + destLat + "&to_lng=" + destLng)
-            .then(function (r) { return r.json(); })
-            .then(function (rt) {
-                if (rt && !rt.error) {
-                    rt.dest_lat = destLat;
-                    rt.dest_lng = destLng;
-                    rt.dest_display = destDisplay;
-                }
-                cb(rt.error && !rt.steps.length ? rt.error : null, rt);
-            })
-            .catch(function (e) { cb(e.message); });
-    }
-
+    // ── Mic / Voice ────────────────────────────────────────
     function toggleMic() {
         unlockSpeech();
-
-        if (micActive) {
-            stopMic();
-            return;
-        }
-
+        if (micActive) { stopMic(); return; }
         micActive = true;
         syncReplyLanguageToSelection();
-
         voiceBtn.classList.add("active");
         voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
         micBar.classList.add("on");
         micLabel.textContent = "MIC • " + currentLang().flag + " " + currentLang().ai;
-
         if (useRecorder) startRecording();
         else startSR();
     }
 
     function stopMic() {
-        micActive = false;
-        isListening = false;
-
+        micActive = false; isListening = false;
         voiceBtn.classList.remove("active");
         voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
         micBar.classList.remove("on");
-
         clearTimeout(recordTimer);
-
-        if (recognition) {
-            try { recognition.stop(); } catch (e) {}
-        }
-
-        if (mediaRecorder && mediaRecorder.state !== "inactive") {
-            try { mediaRecorder.stop(); } catch (e) {}
-        }
+        if (recognition) try { recognition.stop(); } catch(e) {}
+        if (mediaRecorder && mediaRecorder.state !== "inactive") try { mediaRecorder.stop(); } catch(e) {}
     }
 
     function startSR() {
         if (!micActive || isListening || isSpeaking || busy) return;
-
         var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) {
-            useRecorder = true;
-            startRecording();
-            return;
-        }
+        if (!SR) { useRecorder = true; startRecording(); return; }
 
         recognition = new SR();
         recognition.continuous = true;
@@ -908,107 +1011,64 @@
             for (var i = e.resultIndex; i < e.results.length; i++) {
                 if (e.results[i].isFinal) {
                     var text = e.results[i][0].transcript.trim();
-                    if (text) {
-                        stopListeningSR();
-                        sendText(text);
-                    }
+                    if (text) { stopListeningSR(); sendText(text); }
                 }
             }
         };
-
         recognition.onerror = function () {
             isListening = false;
-            if (micActive && !isSpeaking && !busy) {
-                setTimeout(function () {
-                    if (micActive) startSR();
-                }, 1000);
-            }
+            if (micActive && !isSpeaking && !busy) setTimeout(function () { if (micActive) startSR(); }, 1000);
         };
-
         recognition.onend = function () {
             isListening = false;
-            if (micActive && !isSpeaking && !busy) {
-                setTimeout(function () {
-                    if (micActive && !isListening) startSR();
-                }, 300);
-            }
+            if (micActive && !isSpeaking && !busy) setTimeout(function () { if (micActive && !isListening) startSR(); }, 300);
         };
-
-        try {
-            recognition.start();
-            isListening = true;
-        } catch (e) {
-            setTimeout(function () {
-                if (micActive) startSR();
-            }, 500);
-        }
+        try { recognition.start(); isListening = true; }
+        catch(e) { setTimeout(function () { if (micActive) startSR(); }, 500); }
     }
 
     function stopListeningSR() {
-        if (recognition) {
-            try { recognition.stop(); } catch (e) {}
-        }
+        if (recognition) try { recognition.stop(); } catch(e) {}
         isListening = false;
     }
 
     function startRecording() {
         if (!micActive || isListening || isSpeaking || busy) return;
-
         navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
             audioChunks = [];
-
             var options = { mimeType: "audio/webm" };
             try { mediaRecorder = new MediaRecorder(stream, options); }
-            catch (e) { mediaRecorder = new MediaRecorder(stream); }
+            catch(e) { mediaRecorder = new MediaRecorder(stream); }
 
-            mediaRecorder.ondataavailable = function (e) {
-                if (e.data.size > 0) audioChunks.push(e.data);
-            };
-
+            mediaRecorder.ondataavailable = function (e) { if (e.data.size > 0) audioChunks.push(e.data); };
             mediaRecorder.onstop = function () {
                 clearTimeout(recordTimer);
                 stream.getTracks().forEach(function (t) { t.stop(); });
-
                 if (!micActive || audioChunks.length === 0) return;
-
                 var blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-
-                if (blob.size < 2500) {
-                    isListening = false;
-                    if (micActive && !busy) startRecording();
-                    return;
-                }
-
+                if (blob.size < 2500) { isListening = false; if (micActive && !busy) startRecording(); return; }
                 var reader = new FileReader();
                 reader.onload = function () {
                     var base64 = reader.result.split(",")[1];
                     isListening = false;
                     showProc();
-
                     apiTranscribe(base64, function (err, text) {
                         hideProc();
-
-                        if (err || !String(text || "").trim()) {
+                        if (err || !String(text||"").trim()) {
                             if (err) addBubble("assistant", "Voice input unavailable: " + err);
                             if (micActive && !busy) startRecording();
                             return;
                         }
-
                         sendText(text.trim());
                     });
                 };
                 reader.readAsDataURL(blob);
             };
-
             mediaRecorder.start();
             isListening = true;
-
             recordTimer = setTimeout(function () {
-                if (mediaRecorder && mediaRecorder.state === "recording") {
-                    mediaRecorder.stop();
-                }
+                if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
             }, 2500);
-
         }).catch(function () {
             addBubble("assistant", "Mic access denied. Please allow microphone permission.");
             stopMic();
@@ -1017,125 +1077,162 @@
 
     function restartMicAfterReply() {
         if (!micActive) return;
-
         setTimeout(function () {
             if (!micActive || isSpeaking || busy || isListening) return;
-            if (useRecorder) startRecording();
-            else startSR();
+            if (useRecorder) startRecording(); else startSR();
         }, 500);
     }
 
+    // ── GPS ────────────────────────────────────────────────
+    // Throttle reverse geocode — only re-geocode if moved >15m or 20s passed
+    var lastGeocodeAt = 0, lastGeocodeLat = 0, lastGeocodeLng = 0;
+
     function initGPS() {
-        if (!navigator.geolocation) {
-            locAddr.textContent = "GPS not available";
-            return;
-        }
+        if (!navigator.geolocation) { locAddr.textContent = "GPS not available"; return; }
 
         navigator.geolocation.watchPosition(
             function (p) {
-                gpsPos = {
-                    lat: p.coords.latitude,
-                    lng: p.coords.longitude,
-                    acc: p.coords.accuracy
-                };
+                var acc = p.coords.accuracy || 999;
+                gpsPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: acc };
                 locBar.classList.remove("no-gps");
-                reverseGeocode(gpsPos.lat, gpsPos.lng);
+
+                // Show accuracy pill immediately on every GPS update
+                updateAccuracyDisplay(acc, p.coords.latitude, p.coords.longitude);
+
+                // Only re-geocode if moved >15m or >20s since last geocode
+                var now = Date.now();
+                var moved = metersBetween(p.coords.latitude, p.coords.longitude, lastGeocodeLat, lastGeocodeLng);
+                if (moved > 15 || now - lastGeocodeAt > 20000) {
+                    lastGeocodeAt = now;
+                    lastGeocodeLat = p.coords.latitude;
+                    lastGeocodeLng = p.coords.longitude;
+                    reverseGeocode(p.coords.latitude, p.coords.longitude);
+                }
+
                 updateLiveNavigation();
+                updateTransportMode(p.coords.speed);
+
+                if (leafletMap) addOrMoveDriverMarker(gpsPos.lat, gpsPos.lng);
+                maybeRefreshWeather();
             },
-            function () {
+            function (err) {
                 locBar.classList.add("no-gps");
                 locAddr.textContent = "GPS searching...";
             },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
         );
+    }
+
+    function updateAccuracyDisplay(acc, lat, lng) {
+        var accEl   = document.getElementById("locAcc");
+        var pillEl  = document.getElementById("locAccPill");
+        var coordEl = document.getElementById("locCoords");
+
+        if (!accEl) return;
+        accEl.style.display = "flex";
+
+        var accRound = Math.round(acc);
+        if (pillEl) {
+            pillEl.textContent = "±" + accRound + "m";
+            pillEl.className = "loc-acc-pill";
+            if (accRound <= 20)       pillEl.classList.add("acc-good");
+            else if (accRound <= 60)  pillEl.classList.add("acc-ok");
+            else                       pillEl.classList.add("acc-poor");
+        }
+
+        if (coordEl && lat != null && lng != null) {
+            coordEl.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
+        }
     }
 
     function reverseGeocode(lat, lng) {
         fetch("/api/geocode?lat=" + lat + "&lng=" + lng)
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                currentStreet = d.address || "";
-                locAddr.textContent = currentStreet || lat.toFixed(5) + "," + lng.toFixed(5);
-            })
-            .catch(function () {});
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            currentStreet = d.address || "";
+            locAddr.textContent = currentStreet || lat.toFixed(5) + "," + lng.toFixed(5);
+
+            // Show geocoder source badge
+            var srcEl = document.getElementById("locSource");
+            if (srcEl) {
+                if (d.source === "onemap") {
+                    srcEl.textContent = "● ONEMAP SG";
+                    srcEl.style.color = "rgba(76,175,80,0.7)";
+                } else if (d.source === "nominatim") {
+                    srcEl.textContent = "● OSM";
+                    srcEl.style.color = "rgba(255,193,7,0.6)";
+                } else {
+                    srcEl.textContent = "";
+                }
+            }
+        })
+        .catch(function () {});
     }
 
+    // ── Routing ────────────────────────────────────────────
     function fetchRoute(destAddr, cb) {
-        if (!gpsPos) {
-            cb("No GPS");
-            return;
-        }
+        if (!gpsPos) { cb("No GPS"); return; }
 
         fetch("/api/address-to-latlng?address=" + encodeURIComponent(destAddr))
-            .then(function (r) { return r.json(); })
-            .then(function (g) {
-                if (!g.lat) {
-                    cb("Address not found");
-                    return;
-                }
+        .then(function (r) { return r.json(); })
+        .then(function (g) {
+            if (!g.lat) { cb("Address not found"); return; }
 
-                fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng + "&to_lat=" + g.lat + "&to_lng=" + g.lng)
-                    .then(function (r) { return r.json(); })
-                    .then(function (rt) {
-                        if (rt && !rt.error) {
-                            rt.dest_lat = g.lat;
-                            rt.dest_lng = g.lng;
-                            rt.dest_display = g.display || destAddr;
-                        }
-                        cb(rt.error && !rt.steps.length ? rt.error : null, rt);
-                    })
-                    .catch(function (e) { cb(e.message); });
+            var mode = routingMode; // driving or walking based on transport detect
+            fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng
+                + "&to_lat=" + g.lat + "&to_lng=" + g.lng + "&mode=" + mode)
+            .then(function (r) { return r.json(); })
+            .then(function (rt) {
+                if (rt && !rt.error) {
+                    rt.dest_lat = g.lat; rt.dest_lng = g.lng;
+                    rt.dest_display = g.display || destAddr;
+                }
+                cb((rt.error && !rt.steps.length) ? rt.error : null, rt);
             })
             .catch(function (e) { cb(e.message); });
+        })
+        .catch(function (e) { cb(e.message); });
     }
 
     function metersBetween(lat1, lng1, lat2, lng2) {
-        var R = 6371000;
-        var toRad = function (d) { return d * Math.PI / 180; };
-        var dLat = toRad(lat2 - lat1);
-        var dLng = toRad(lng2 - lng1);
-        var a =
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        return R * c;
+        var R = 6371000, toRad = function (d) { return d * Math.PI / 180; };
+        var dLat = toRad(lat2-lat1), dLng = toRad(lng2-lng1);
+        var a = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     }
 
+    // ── Live Navigation ────────────────────────────────────
     function startLiveNavigation(route) {
         if (!route || !route.steps || !route.steps.length) return;
-        activeRoute = route;
-        activeStepIndex = 0;
-        lastSpokenStep = -1;
-        navActive = true;
-        notifyShownForRoute = false;
-        arrivalPromptSpoken = false;
-        rainAlertShownForRoute = false;
-        currentWeatherInfo = null;
-        removeArrivalCard();
-        removeRainCard();
+        activeRoute = route; activeStepIndex = 0; lastSpokenStep = -1; navActive = true;
+        notifyShownForRoute = false; arrivalPromptSpoken = false;
+        rainAlertShownForRoute = false; currentWeatherInfo = null;
+        removeArrivalCard(); removeRainCard();
         highlightActiveStep();
         speakCurrentStepIfNeeded(true);
 
+        // Show map automatically when nav starts
+        showMap();
+        if (leafletMap) {
+            setTimeout(function () {
+                drawRouteOnMap(route);
+                leafletMap.invalidateSize();
+            }, 200);
+        }
+
         if (route.dest_lat != null && route.dest_lng != null) {
             apiWeather(route.dest_lat, route.dest_lng, function (err, weatherData) {
-                if (!err && weatherData) {
-                    currentWeatherInfo = weatherData;
-                }
+                if (!err && weatherData) currentWeatherInfo = weatherData;
             });
         }
     }
 
     function highlightActiveStep() {
         if (!activeRoute || !activeRoute.steps) return;
-
         activeRoute.steps.forEach(function (_, i) {
             var el = document.getElementById("rs" + i);
-            if (el) {
-                el.style.background = i === activeStepIndex ? "rgba(227,24,55,0.18)" : "transparent";
-            }
+            if (el) el.style.background = i === activeStepIndex ? "rgba(227,24,55,0.18)" : "transparent";
         });
-
         var activeEl = document.getElementById("rs" + activeStepIndex);
         if (activeEl) activeEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
@@ -1144,10 +1241,8 @@
         if (!navActive || !activeRoute || !activeRoute.steps) return;
         if (activeStepIndex >= activeRoute.steps.length) return;
         if (!force && lastSpokenStep === activeStepIndex) return;
-
         var step = activeRoute.steps[activeStepIndex];
         if (!step || !step.text) return;
-
         lastSpokenStep = activeStepIndex;
         detectLang(step.text);
         speak(tuneReplyByLanguage(step.text));
@@ -1155,19 +1250,15 @@
 
     function maybeShowArrivalNotify() {
         if (!navActive || !activeRoute || notifyShownForRoute) return;
-
         var secs = Number(activeRoute.total_duration || 0);
         var meters = Number(activeRoute.total_distance || 0);
-
         if ((secs > 0 && secs <= ETA_NOTIFY_SECONDS) || (meters > 0 && meters <= ETA_NOTIFY_METERS)) {
             notifyShownForRoute = true;
-
             if (!arrivalPromptSpoken) {
                 arrivalPromptSpoken = true;
                 detectLang(uiText("about_5_min"));
                 speak(uiText("about_5_min"));
             }
-
             showArrivalNotifyCard();
         }
     }
@@ -1175,7 +1266,6 @@
     function maybeShowRainAlert() {
         if (!navActive || rainAlertShownForRoute) return;
         if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
-
         rainAlertShownForRoute = true;
         detectLang(uiText("raining_prompt"));
         speak(uiText("raining_prompt"));
@@ -1185,20 +1275,17 @@
     function updateLiveNavigation() {
         if (!navActive || !gpsPos || !activeRoute || !activeRoute.steps) return;
         if (activeStepIndex >= activeRoute.steps.length) return;
-
         var now = Date.now();
         if (now - lastGpsCheckAt < 1500) return;
         lastGpsCheckAt = now;
 
         var step = activeRoute.steps[activeStepIndex];
         if (!step || step.lat == null || step.lng == null) return;
-
         var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
             var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
-            detectLang(warnText);
-            speak(warnText);
+            detectLang(warnText); speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
             maybeShowArrivalNotify();
@@ -1209,10 +1296,8 @@
         if (dist <= 25) {
             activeStepIndex++;
             highlightActiveStep();
-
             if (activeRoute && activeRoute.steps) {
-                var remainSecs = 0;
-                var remainMeters = 0;
+                var remainSecs = 0, remainMeters = 0;
                 for (var i = activeStepIndex; i < activeRoute.steps.length; i++) {
                     remainSecs += Number(activeRoute.steps[i].duration || 0);
                     remainMeters += Number(activeRoute.steps[i].distance || 0);
@@ -1222,14 +1307,12 @@
                 maybeShowArrivalNotify();
                 maybeShowRainAlert();
             }
-
             if (activeStepIndex < activeRoute.steps.length) {
                 lastSpokenStep = -1;
-                setTimeout(function () {
-                    speakCurrentStepIfNeeded(true);
-                }, 500);
+                setTimeout(function () { speakCurrentStepIfNeeded(true); }, 500);
             } else {
                 navActive = false;
+                clearRouteFromMap();
                 detectLang(uiText("arrived"));
                 speak(uiText("arrived"));
             }
@@ -1237,59 +1320,24 @@
     }
 
     function stopLiveNavigation() {
-        navActive = false;
-        activeRoute = null;
-        activeStepIndex = 0;
-        lastSpokenStep = -1;
-        notifyShownForRoute = false;
-        arrivalPromptSpoken = false;
-        rainAlertShownForRoute = false;
-        currentWeatherInfo = null;
-        removeArrivalCard();
-        removeRainCard();
+        navActive = false; activeRoute = null; activeStepIndex = 0; lastSpokenStep = -1;
+        notifyShownForRoute = false; arrivalPromptSpoken = false;
+        rainAlertShownForRoute = false; currentWeatherInfo = null;
+        removeArrivalCard(); removeRainCard();
+        clearRouteFromMap();
     }
 
+    // ── Route card ─────────────────────────────────────────
     function showRouteSteps(route) {
         removeEl("routeCard");
         if (!route || !route.steps || !route.steps.length) return;
 
+        var modeLabel = routingMode === "walking" ? "🚶 Walk" : "🚗 Drive";
+
         var div = document.createElement("div");
         div.id = "routeCard";
-
-        // --- Build Google Maps embed URL ---
-        var mapHtml = "";
-        if (route.dest_lat != null && route.dest_lng != null) {
-            var mapSrc;
-            if (gpsPos) {
-                mapSrc = "https://www.google.com/maps/embed/v1/directions"
-                    + "?key=" + (window.__GMAPS_EMBED_KEY || "")
-                    + "&origin=" + gpsPos.lat + "," + gpsPos.lng
-                    + "&destination=" + route.dest_lat + "," + route.dest_lng
-                    + "&mode=driving";
-            }
-            // Fallback: use plain Google Maps link as embed if no embed key
-            if (!window.__GMAPS_EMBED_KEY) {
-                var destParam = route.dest_display
-                    ? encodeURIComponent(route.dest_display)
-                    : route.dest_lat + "," + route.dest_lng;
-                mapSrc = gpsPos
-                    ? "https://maps.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng + "&daddr=" + destParam + "&output=embed"
-                    : "https://maps.google.com/maps?q=" + destParam + "&z=16&output=embed";
-            }
-
-            mapHtml = '<div class="anav">'
-                + '<div class="anav-title"><div class="anav-dot"></div>NAVIGATING' + (route.dest_display ? " — " + esc(route.dest_display) : "") + '</div>'
-                + '<div class="mf"><iframe src="' + mapSrc + '" width="100%" height="200" allowfullscreen loading="lazy" style="border:0"></iframe></div>'
-                + '<div style="display:flex;gap:6px;margin-top:6px;">'
-                + '<button id="rGmaps" style="flex:1;padding:10px;border-radius:8px;border:none;background:#4285F4;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🗺 Open Google Maps</button>'
-                + '<button id="rWaze" style="flex:1;padding:10px;border-radius:8px;border:none;background:#33CCFF;color:#000;font-size:12px;font-weight:700;cursor:pointer;">🚗 Open Waze</button>'
-                + '</div>'
-                + '</div>';
-        }
-
-        var html = mapHtml;
-        html += '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
-        html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 ' + esc(route.summary || "") + '</div>';
+        var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
+        html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 ' + esc(route.summary || "") + ' ' + modeLabel + '</div>';
 
         route.steps.forEach(function (s, i) {
             html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
@@ -1298,7 +1346,7 @@
         });
 
         html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Current Step</button>';
+        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Step</button>';
         html += '</div></div>';
 
         div.innerHTML = html;
@@ -1309,31 +1357,6 @@
             unlockSpeech();
             speakCurrentStepIfNeeded(true);
         });
-
-        // Wire up external map buttons
-        if (route.dest_lat != null && route.dest_lng != null) {
-            var gmapsBtn = document.getElementById("rGmaps");
-            var wazeBtn = document.getElementById("rWaze");
-
-            if (gmapsBtn) {
-                gmapsBtn.addEventListener("click", function () {
-                    var destParam = route.dest_display
-                        ? encodeURIComponent(route.dest_display)
-                        : route.dest_lat + "," + route.dest_lng;
-                    var url = gpsPos
-                        ? "https://www.google.com/maps/dir/" + gpsPos.lat + "," + gpsPos.lng + "/" + destParam
-                        : "https://www.google.com/maps/search/" + destParam;
-                    window.open(url, "_blank");
-                });
-            }
-
-            if (wazeBtn) {
-                wazeBtn.addEventListener("click", function () {
-                    var url = "https://waze.com/ul?ll=" + route.dest_lat + "," + route.dest_lng + "&navigate=yes";
-                    window.open(url, "_blank");
-                });
-            }
-        }
     }
 
     function getIcon(t, m) {
@@ -1345,18 +1368,13 @@
         return "⬆️";
     }
 
+    // ── Delivery card ──────────────────────────────────────
     function showDeliveryCard(parsed) {
         removeEl("deliveryCard");
-
         var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
-        var mapSrc = gpsPos
-            ? "https://maps.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng + "&daddr=" + encodeURIComponent(fullAddr) + "&output=embed"
-            : "https://maps.google.com/maps?q=" + encodeURIComponent(fullAddr) + "&z=16&output=embed";
-
         var div = document.createElement("div");
         div.id = "deliveryCard";
         var html = "";
-
         if (parsed.unit) {
             html += '<div class="unit-card"><div class="unit-label">UNIT / BLOCK</div><div class="unit-num">' + esc(parsed.unit) + '</div><div class="unit-addr">' + esc(parsed.address) + '</div>';
             if (parsed.language) html += '<div class="unit-lang">🌐 ' + esc(parsed.language) + '</div>';
@@ -1366,47 +1384,27 @@
             if (parsed.postal) html += '<div class="unit-addr">📮 ' + esc(parsed.postal) + '</div>';
             html += '</div>';
         }
-
-        if (parsed.recipient) {
-            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">👤 ' + esc(parsed.recipient) + '</div>';
-        }
-
-        if (parsed.phone) {
-            html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">📞 ' + esc(parsed.phone) + '</div>';
-        }
-
-        html += '<div class="anav"><div class="anav-title"><div class="anav-dot"></div>NAVIGATING</div><div class="mf"><iframe src="' + mapSrc + '" width="100%" height="180" allowfullscreen loading="lazy"></iframe></div></div>';
+        if (parsed.recipient) html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">👤 ' + esc(parsed.recipient) + '</div>';
+        if (parsed.phone)     html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">📞 ' + esc(parsed.phone) + '</div>';
 
         div.innerHTML = html;
         chatEl.appendChild(div);
         scrollDown();
     }
 
-    function esc(s) {
-        var d = document.createElement("div");
-        d.textContent = s;
-        return d.innerHTML;
-    }
-
-    function scrollDown() {
-        chatEl.scrollTop = chatEl.scrollHeight;
-    }
-
-    function removeEl(id) {
-        var el = document.getElementById(id);
-        if (el) el.remove();
-    }
+    // ── Helpers ────────────────────────────────────────────
+    function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+    function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
+    function removeEl(id) { var el = document.getElementById(id); if (el) el.remove(); }
 
     function addBubble(role, text, imgUrl) {
         var row = document.createElement("div");
         row.className = "mr " + (role === "user" ? "u" : "a");
-
         var html = "";
         if (role === "assistant") html += '<div class="av">🥷</div>';
         html += '<div class="bb ' + (role === "user" ? "u" : "a") + '">';
         if (imgUrl) html += '<img src="' + imgUrl + '" alt="">';
         html += esc(text) + "</div>";
-
         row.innerHTML = html;
         chatEl.appendChild(row);
         scrollDown();
@@ -1414,31 +1412,23 @@
 
     function showProc() {
         var el = document.createElement("div");
-        el.id = "proc";
-        el.className = "proc";
+        el.id = "proc"; el.className = "proc";
         el.textContent = uiText("processing");
-        chatEl.appendChild(el);
-        scrollDown();
+        chatEl.appendChild(el); scrollDown();
     }
 
-    function hideProc() {
-        removeEl("proc");
-    }
-
-    function updateSend() {
-        sendBtn.classList.toggle("on", !!inp.value.trim());
-    }
+    function hideProc() { removeEl("proc"); }
+    function updateSend() { sendBtn.classList.toggle("on", !!inp.value.trim()); }
 
     function cleanReplyForSpeech(reply) {
-        var t = String(reply || "")
-            .replace(/ADDRESS:\s*.*$/im, "")
-            .replace(/SEARCH:\s*.*$/im, "")
-            .replace(/PLACE:\s*.*$/im, "")
-            .replace(/[•\-\*]/g, "")
-            .replace(/\n+/g, ". ")
-            .trim();
-
-        return tuneReplyByLanguage(t);
+        return tuneReplyByLanguage(
+            String(reply || "")
+                .replace(/ADDRESS:\s*.*$/im, "")
+                .replace(/PLACE:\s*.*$/im, "")
+                .replace(/[•\-\*]/g, "")
+                .replace(/\n+/g, ". ")
+                .trim()
+        );
     }
 
     function extractPhoneFromText(text) {
@@ -1447,11 +1437,10 @@
         return null;
     }
 
+    // ── Send text ──────────────────────────────────────────
     function sendText(text) {
         if (!text || !text.trim() || busy) return;
-
         syncReplyLanguageToSelection();
-
         var rawText = text.trim();
 
         var phoneMatch = rawText.match(/set customer phone\s+([+\d\s-]+)/i);
@@ -1462,30 +1451,21 @@
             } else {
                 addBubble("assistant", uiText("invalid_phone"));
             }
-            inp.value = "";
-            updateSend();
-            return;
+            inp.value = ""; updateSend(); return;
         }
 
         var maybePhone = extractPhoneFromText(rawText);
         if (maybePhone) setCustomerPhone(maybePhone);
 
         addBubble("user", rawText);
-        inp.value = "";
-        updateSend();
-
-        busy = true;
-        showProc();
+        inp.value = ""; updateSend();
+        busy = true; showProc();
 
         apiChat(rawText, function (err, reply) {
-            hideProc();
-            busy = false;
-
+            hideProc(); busy = false;
             if (err) {
                 addBubble("assistant", "Error: " + err);
-                setTimeout(function () {
-                    speak("Error. " + err, restartMicAfterReply);
-                }, 150);
+                setTimeout(function () { speak("Error. " + err, restartMicAfterReply); }, 150);
                 return;
             }
 
@@ -1493,67 +1473,11 @@
             detectLang(reply);
             addBubble("assistant", reply);
 
-            // --- SEARCH: flow (POI/business lookup via Google Places) ---
-            var searchMatch = reply.match(/SEARCH:\s*(.+)/i);
-            if (searchMatch && searchMatch[1]) {
-                var searchQuery = searchMatch[1].trim();
-                stopLiveNavigation();
-
-                setTimeout(function () {
-                    speak(cleanReplyForSpeech(reply), function () {
-                        addBubble("assistant", "🔍 " + searchQuery + "...");
-                        showProc();
-
-                        apiPoiSearch(searchQuery, function (searchErr, searchData) {
-                            hideProc();
-
-                            if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
-                                // Fallback: try as address via fetchRoute
-                                addBubble("assistant", "No POI results. Trying address lookup...");
-                                fetchRoute(searchQuery, function (routeErr, route) {
-                                    if (!routeErr && route && route.steps && route.steps.length) {
-                                        scannedAddr = searchQuery;
-                                        showRouteSteps(route);
-                                        startLiveNavigation(route);
-                                    } else {
-                                        addBubble("assistant", uiText("route_not_found"));
-                                        restartMicAfterReply();
-                                    }
-                                });
-                                return;
-                            }
-
-                            var best = searchData.results[0];
-                            var dispName = best.building || best.address || searchQuery;
-                            var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
-                            var srcTag = best.source === "google_places" ? " ✅" : " 🗺";
-
-                            scannedAddr = best.address;
-                            addBubble("assistant", "📍 " + dispName + srcTag + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
-
-                            addBubble("assistant", uiText("route_starting"));
-                            fetchRouteByCoords(best.lat, best.lng, dispName, function (routeErr, route) {
-                                if (!routeErr && route && route.steps && route.steps.length) {
-                                    showRouteSteps(route);
-                                    startLiveNavigation(route);
-                                } else {
-                                    addBubble("assistant", uiText("route_not_found"));
-                                    restartMicAfterReply();
-                                }
-                            });
-                        });
-                    });
-                }, 150);
-                return;
-            }
-
-            // --- ADDRESS: flow (direct address geocode via Google Maps) ---
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
                 var navAddr = addrMatch[1].trim();
                 scannedAddr = navAddr;
                 stopLiveNavigation();
-
                 setTimeout(function () {
                     speak(cleanReplyForSpeech(reply), function () {
                         addBubble("assistant", uiText("route_starting"));
@@ -1568,48 +1492,30 @@
                         });
                     });
                 }, 150);
-                return;
+            } else {
+                setTimeout(function () { speak(cleanReplyForSpeech(reply), restartMicAfterReply); }, 150);
             }
-
-            // --- Normal reply (no navigation) ---
-            setTimeout(function () {
-                speak(cleanReplyForSpeech(reply), restartMicAfterReply);
-            }, 150);
         });
     }
 
+    // ── Scan ───────────────────────────────────────────────
     function handleScan(fileInput) {
         var file = fileInput.files && fileInput.files[0];
         if (!file || busy) return;
-
         busy = true;
         syncReplyLanguageToSelection();
 
         compressImage(file, function (err, img) {
-            if (err) {
-                addBubble("assistant", "Error: " + err);
-                busy = false;
-                return;
-            }
-
+            if (err) { addBubble("assistant", "Error: " + err); busy = false; return; }
             addBubble("user", "📷 Scanned (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
             showProc();
 
             apiScan(img.base64, function (err2, reply) {
-                hideProc();
-                busy = false;
-                fileInput.value = "";
-
-                if (err2) {
-                    addBubble("assistant", "Error: " + err2);
-                    speak("Scan error.", restartMicAfterReply);
-                    return;
-                }
+                hideProc(); busy = false; fileInput.value = "";
+                if (err2) { addBubble("assistant", "Error: " + err2); speak("Scan error.", restartMicAfterReply); return; }
 
                 var parsed = null;
-                try {
-                    parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
-                } catch (e) {}
+                try { parsed = JSON.parse(reply.replace(/```json|```/g, "").trim()); } catch(e) {}
 
                 if (parsed && parsed.phone) setCustomerPhone(parsed.phone);
 
@@ -1641,202 +1547,92 @@
                     reply = tuneReplyByLanguage(reply);
                     detectLang(reply);
                     addBubble("assistant", reply);
-                    setTimeout(function () {
-                        speak(reply, restartMicAfterReply);
-                    }, 150);
+                    setTimeout(function () { speak(reply, restartMicAfterReply); }, 150);
                 }
             });
         });
     }
 
-    function handleStreetScan(fileInput) {
-        var file = fileInput.files && fileInput.files[0];
-        if (!file || busy) return;
-
-        busy = true;
-        syncReplyLanguageToSelection();
-
-        compressImage(file, function (err, img) {
-            if (err) {
-                addBubble("assistant", "Error: " + err);
-                busy = false;
-                return;
-            }
-
-            addBubble("user", "📍 Street scan (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
-            showProc();
-
-            apiScanStreet(img.base64, function (err2, reply) {
-                hideProc();
-                busy = false;
-                fileInput.value = "";
-
-                if (err2) {
-                    addBubble("assistant", "Error: " + err2);
-                    speak("Street scan error.", restartMicAfterReply);
-                    return;
-                }
-
-                var parsed = null;
-                try {
-                    parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
-                } catch (e) {}
-
-                if (!parsed || !parsed.best_search) {
-                    addBubble("assistant", "Could not identify location from photo. Try capturing a road sign or building name.");
-                    speak("Could not identify location.", restartMicAfterReply);
-                    return;
-                }
-
-                // Show what was detected
-                var clueText = "";
-                if (parsed.road_name) clueText += "🛣 " + parsed.road_name + "\n";
-                if (parsed.building) clueText += "🏢 " + parsed.building + "\n";
-                if (parsed.block) clueText += "🔢 Block " + parsed.block + "\n";
-                if (parsed.expressway) clueText += "🛤 " + parsed.expressway + "\n";
-                if (parsed.landmark) clueText += "📍 " + parsed.landmark + "\n";
-                if (parsed.bus_stop) clueText += "🚌 Stop " + parsed.bus_stop + "\n";
-                if (parsed.clues) clueText += "👁 " + parsed.clues + "\n";
-                clueText += "🔎 Searching: " + parsed.best_search;
-
-                addBubble("assistant", clueText);
-
-                // Search for the identified location
-                apiPoiSearch(parsed.best_search, function (searchErr, searchData) {
-                    if (searchErr || !searchData || !searchData.results || !searchData.results.length) {
-                        // Try road_name or building as fallback search
-                        var fallbackQuery = parsed.road_name || parsed.building || parsed.block;
-                        if (fallbackQuery) {
-                            addBubble("assistant", "Trying: " + fallbackQuery + "...");
-                            apiPoiSearch(fallbackQuery, function (fbErr, fbData) {
-                                if (!fbErr && fbData && fbData.results && fbData.results.length) {
-                                    showStreetSearchResult(fbData.results[0]);
-                                } else {
-                                    addBubble("assistant", "Location not found.");
-                                    restartMicAfterReply();
-                                }
-                            });
-                        } else {
-                            addBubble("assistant", "Location not found.");
-                            restartMicAfterReply();
-                        }
-                        return;
-                    }
-
-                    showStreetSearchResult(searchData.results[0]);
-                });
-            });
-        });
-    }
-
-    function showStreetSearchResult(best) {
-        var dispName = best.building || best.address;
-        var distInfo = best.distance_m != null ? " (" + (best.distance_m < 1000 ? best.distance_m + "m" : (best.distance_m / 1000).toFixed(1) + "km") + " away)" : "";
-        var srcTag = best.source === "google_places" ? " ✅" : " 🗺";
-
-        scannedAddr = best.address;
-        addBubble("assistant", "📍 " + dispName + srcTag + "\n" + best.address + (best.postal ? " S" + best.postal : "") + distInfo);
-
-        detectLang(dispName);
-        speak(dispName, restartMicAfterReply);
-    }
-
+    // ── Init ───────────────────────────────────────────────
     renderLangBar();
     syncReplyLanguageToSelection();
 
     CHIPS.forEach(function (c) {
         var btn = document.createElement("button");
-        btn.className = "chip";
-        btn.textContent = c;
-        btn.addEventListener("click", function () {
-            unlockSpeech();
-            sendText(c);
-        });
+        btn.className = "chip"; btn.textContent = c;
+        btn.addEventListener("click", function () { unlockSpeech(); sendText(c); });
         chipsEl.appendChild(btn);
     });
 
-    sendBtn.addEventListener("click", function () {
-        unlockSpeech();
-        sendText(inp.value);
-    });
-
+    // Button events
+    sendBtn.addEventListener("click",  function () { unlockSpeech(); sendText(inp.value); });
     inp.addEventListener("input", updateSend);
-
-    inp.addEventListener("keydown", function (e) {
-        if (e.key === "Enter") {
-            unlockSpeech();
-            sendText(inp.value);
-        }
-    });
-
-    voiceBtn.addEventListener("click", function () {
-        unlockSpeech();
-        toggleMic();
-    });
-
-    scanBtn.addEventListener("click", function () {
-        unlockSpeech();
-        currentPickerMode = "scan";
-        scanPickerTitle.textContent = "📷 Scan Parcel Label";
-        scanPicker.style.display = "block";
-    });
-
-    photoBtn.addEventListener("click", function () {
-        unlockSpeech();
-        currentPickerMode = "street";
-        scanPickerTitle.textContent = "🛣️ Identify Street / Location";
-        scanPicker.style.display = "block";
-    });
-
-    pickCamera.addEventListener("click", function () {
-        scanPicker.style.display = "none";
-        if (currentPickerMode === "scan") cameraIn.click();
-        else streetCameraIn.click();
-    });
-
-    pickGallery.addEventListener("click", function () {
-        scanPicker.style.display = "none";
-        if (currentPickerMode === "scan") galleryIn.click();
-        else streetGalleryIn.click();
-    });
-
-    pickCancel.addEventListener("click", function () {
-        scanPicker.style.display = "none";
-    });
-
+    inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { unlockSpeech(); sendText(inp.value); } });
+    voiceBtn.addEventListener("click", function () { unlockSpeech(); toggleMic(); });
+    scanBtn.addEventListener("click",  function () { unlockSpeech(); cameraIn.click(); });
+    photoBtn.addEventListener("click", function () { unlockSpeech(); photoIn.click(); });
     cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-    galleryIn.addEventListener("change", function () { handleScan(galleryIn); });
-    streetCameraIn.addEventListener("change", function () { handleStreetScan(streetCameraIn); });
-    streetGalleryIn.addEventListener("change", function () { handleStreetScan(streetGalleryIn); });
+    photoIn.addEventListener("change",  function () { handleScan(photoIn); });
 
-    navBtnEl.addEventListener("click", function () {
+    // MAP button
+    mapBtn.addEventListener("click", function () {
         unlockSpeech();
-        if (scannedAddr) {
-            stopLiveNavigation();
-            fetchRoute(scannedAddr, function (e, r) {
-                if (!e && r && r.steps.length) {
-                    showRouteSteps(r);
-                    startLiveNavigation(r);
-                } else {
-                    addBubble("assistant", uiText("route_not_found"));
-                }
-            });
+        if (mapVisible) { hideMap(); }
+        else {
+            showMap();
+            setTimeout(initLeafletMap, 80);
         }
     });
 
-    stopBtnEl.addEventListener("click", stopSpeak);
+    // Map routing mode pills
+    if (mpDriving) {
+        mpDriving.addEventListener("click", function () {
+            routingMode = "driving";
+            setMapModePill("driving");
+        });
+    }
+    if (mpWalking) {
+        mpWalking.addEventListener("click", function () {
+            routingMode = "walking";
+            setMapModePill("walking");
+        });
+    }
+
+    // Live cam button
+    liveCamBtn.addEventListener("click", function () {
+        unlockSpeech();
+        openLiveCam();
+    });
+    camSnap.addEventListener("click",       analyzeCamera);
+    camCloseBtn.addEventListener("click",   closeLiveCam);
+    camAutoToggle.addEventListener("click", toggleCamAuto);
+
+    // Nav button (legacy)
+    if (navBtnEl) {
+        navBtnEl.addEventListener("click", function () {
+            unlockSpeech();
+            if (scannedAddr) {
+                stopLiveNavigation();
+                fetchRoute(scannedAddr, function (e, r) {
+                    if (!e && r && r.steps.length) { showRouteSteps(r); startLiveNavigation(r); }
+                    else addBubble("assistant", uiText("route_not_found"));
+                });
+            }
+        });
+    }
+
+    if (stopBtnEl) stopBtnEl.addEventListener("click", stopSpeak);
 
     initGPS();
 
     var mode = useRecorder ? "(recording mode)" : "(voice mode)";
-    addBubble(
-        "assistant",
+    addBubble("assistant",
         uiText("ready") + " " + mode + ".\n" +
         "1️⃣ " + uiText("pick_language") + "\n" +
         "2️⃣ " + uiText("tap_mic_once") + "\n" +
         "3️⃣ " + uiText("scan_label") + "\n" +
-        "4️⃣ " + uiText("scan_street") + "\n" +
-        "5️⃣ " + uiText("ask_route") + "\n" +
-        "6️⃣ " + uiText("rain_popup_note")
+        "4️⃣ " + uiText("ask_route") + "\n" +
+        "5️⃣ " + uiText("rain_popup_note") + "\n" +
+        "6️⃣ Tap 🗺️ for live map • 📹 for live cam AI"
     );
 })();

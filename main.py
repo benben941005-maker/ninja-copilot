@@ -7,8 +7,8 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
-GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY", "")
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
+ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "")
 
 
 @app.route("/")
@@ -21,11 +21,14 @@ def static_files(path):
     return send_from_directory("static", path)
 
 # =========================================================
-# REVERSE GEOCODE (Google Maps primary, Nominatim fallback)
+# REVERSE GEOCODE
 # =========================================================
 @app.route("/api/geocode")
 def geocode():
-    """Reverse geocode GPS coordinates to street address."""
+    """Reverse geocode GPS coordinates to street address.
+    Uses OneMap SG (official SLA geocoder) as primary when ONEMAP_TOKEN is set,
+    falls back to Nominatim/OpenStreetMap.
+    """
     try:
         lat = request.args.get("lat")
         lng = request.args.get("lng")
@@ -33,35 +36,54 @@ def geocode():
         if not lat or not lng:
             return jsonify({"error": "Missing lat/lng"}), 400
 
-        # --- Google Reverse Geocoding (primary) ---
-        if GOOGLE_PLACES_API_KEY:
+        # ── Try OneMap SG first ──────────────────────────────
+        if ONEMAP_TOKEN:
             try:
-                g_resp = requests.get(
-                    "https://maps.googleapis.com/maps/api/geocode/json",
+                onemap_resp = requests.get(
+                    "https://www.onemap.gov.sg/api/public/revgeocode",
                     params={
-                        "latlng": f"{lat},{lng}",
-                        "key": GOOGLE_PLACES_API_KEY,
-                        "language": "en",
-                        "result_type": "street_address|route|premise"
+                        "location": f"{lat},{lng}",
+                        "buffer": 40,          # 40m search radius
+                        "addressType": "All",
+                        "otherFeatures": "N"
                     },
-                    timeout=8
+                    headers={"Authorization": ONEMAP_TOKEN},
+                    timeout=6
                 )
-                g_data = g_resp.json()
-                g_results = g_data.get("results", [])
+                onemap_data = onemap_resp.json()
+                results = onemap_data.get("GeocodeInfo", [])
 
-                if g_results:
-                    address = g_results[0].get("formatted_address", "")
-                    # Strip ", Singapore" suffix for cleaner display
-                    address = address.replace(", Singapore", "").strip()
-                    return jsonify({
-                        "address": address,
-                        "raw": g_results[0].get("address_components", {}),
-                        "source": "google"
-                    })
+                if results:
+                    # Pick the closest result (first is nearest)
+                    best = results[0]
+                    blk   = best.get("BUILDINGNAME", "") or best.get("BLOCK", "")
+                    road  = best.get("ROAD", "")
+                    postal= best.get("POSTALCODE", "")
+                    building = best.get("BUILDINGNAME", "")
+
+                    parts = []
+                    if blk and road:
+                        parts.append(f"{blk} {road}".strip())
+                    elif road:
+                        parts.append(road)
+                    if building and building != blk:
+                        parts.append(building)
+                    if postal and postal != "NIL":
+                        parts.append(postal)
+
+                    address = ", ".join(p for p in parts if p)
+                    if address:
+                        return jsonify({
+                            "address": address,
+                            "source": "onemap",
+                            "postal": postal if postal != "NIL" else None,
+                            "raw": best,
+                            "total_results": len(results)
+                        })
             except Exception:
                 pass  # Fall through to Nominatim
 
-        # --- Fallback: Nominatim ---
+        # ── Fallback: Nominatim / OpenStreetMap ──────────────
         resp = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={
@@ -75,7 +97,6 @@ def geocode():
             timeout=8
         )
         data = resp.json()
-
         addr = data.get("address", {})
         parts = []
 
@@ -100,8 +121,8 @@ def geocode():
 
         return jsonify({
             "address": address,
-            "raw": addr,
-            "source": "nominatim"
+            "source": "nominatim",
+            "raw": addr
         })
 
     except Exception as e:
@@ -112,7 +133,7 @@ def geocode():
 
 
 # =========================================================
-# FORWARD GEOCODE (Google Maps primary, Nominatim fallback)
+# FORWARD GEOCODE
 # =========================================================
 @app.route("/api/address-to-latlng")
 def address_to_latlng():
@@ -122,218 +143,33 @@ def address_to_latlng():
         if not address:
             return jsonify({"error": "Missing address"}), 400
 
-        # --- Google Geocoding API (primary) ---
-        if GOOGLE_PLACES_API_KEY:
-            try:
-                g_resp = requests.get(
-                    "https://maps.googleapis.com/maps/api/geocode/json",
-                    params={
-                        "address": address + ", Singapore",
-                        "key": GOOGLE_PLACES_API_KEY,
-                        "region": "sg"
-                    },
-                    timeout=8
-                )
-                g_data = g_resp.json()
-                g_results = g_data.get("results", [])
-
-                if g_results:
-                    loc = g_results[0]["geometry"]["location"]
-                    return jsonify({
-                        "lat": loc["lat"],
-                        "lng": loc["lng"],
-                        "display": g_results[0].get("formatted_address", address),
-                        "source": "google"
-                    })
-            except Exception:
-                pass
-
-        # --- Fallback: Nominatim ---
         resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": address + " Singapore", "format": "json", "limit": 1},
+            params={"q": address, "format": "json", "limit": 1},
             headers={"User-Agent": "NinjaCoPilot/1.0"},
             timeout=8
         )
         results = resp.json()
 
         if not results:
-            return jsonify({"error": "Address not found", "lat": None, "lng": None})
+            return jsonify({
+                "error": "Address not found",
+                "lat": None,
+                "lng": None
+            })
 
         return jsonify({
             "lat": float(results[0]["lat"]),
             "lng": float(results[0]["lon"]),
-            "display": results[0].get("display_name", ""),
-            "source": "nominatim"
+            "display": results[0].get("display_name", "")
         })
 
     except Exception as e:
-        return jsonify({"error": str(e), "lat": None, "lng": None})
-
-
-# =========================================================
-# POI / BUSINESS SEARCH (Google Places primary)
-# =========================================================
-@app.route("/api/poi-search")
-@app.route("/api/onemap-search")  # backward compat alias
-def poi_search():
-    """Search for businesses/POIs near driver using Google Places."""
-    try:
-        query = request.args.get("q", "")
-        lat = request.args.get("lat")
-        lng = request.args.get("lng")
-        limit = int(request.args.get("limit", 5))
-
-        if not query:
-            return jsonify({"error": "Missing query", "results": []})
-
-        # --------------------------------------------------
-        # Google Places Text Search (New API)
-        # --------------------------------------------------
-        if GOOGLE_PLACES_API_KEY:
-            try:
-                body = {
-                    "textQuery": query + " Singapore",
-                    "maxResultCount": limit
-                }
-
-                # Bias results near driver's GPS
-                if lat and lng:
-                    body["locationBias"] = {
-                        "circle": {
-                            "center": {
-                                "latitude": float(lat),
-                                "longitude": float(lng)
-                            },
-                            "radius": 10000.0
-                        }
-                    }
-
-                gp_resp = requests.post(
-                    "https://places.googleapis.com/v1/places:searchText",
-                    headers={
-                        "Content-Type": "application/json",
-                        "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
-                        "X-Goog-FieldMask": (
-                            "places.displayName,"
-                            "places.formattedAddress,"
-                            "places.location,"
-                            "places.shortFormattedAddress,"
-                            "places.googleMapsUri"
-                        )
-                    },
-                    json=body,
-                    timeout=8
-                )
-                gp_data = gp_resp.json()
-                gp_places = gp_data.get("places", [])
-
-                if gp_places:
-                    results = []
-                    for p in gp_places[:limit]:
-                        ploc = p.get("location", {})
-                        plat = ploc.get("latitude", 0)
-                        plng = ploc.get("longitude", 0)
-
-                        dist_m = None
-                        if lat and lng and plat and plng:
-                            dist_m = _haversine(
-                                float(lat), float(lng), plat, plng
-                            )
-
-                        display_name = ""
-                        dn = p.get("displayName")
-                        if isinstance(dn, dict):
-                            display_name = dn.get("text", "")
-                        elif isinstance(dn, str):
-                            display_name = dn
-
-                        results.append({
-                            "address": p.get("formattedAddress", ""),
-                            "building": display_name,
-                            "postal": "",
-                            "lat": plat,
-                            "lng": plng,
-                            "search_val": query,
-                            "distance_m": dist_m,
-                            "source": "google_places",
-                            "maps_url": p.get("googleMapsUri", "")
-                        })
-
-                    return jsonify({
-                        "results": results,
-                        "total": len(results),
-                        "query": query,
-                        "source": "google_places"
-                    })
-            except Exception:
-                pass  # Fall through to Nominatim
-
-        # --------------------------------------------------
-        # Fallback: Nominatim search (free, no API key)
-        # --------------------------------------------------
-        try:
-            nom_q = query + " Singapore" if "singapore" not in query.lower() else query
-            nom_resp = requests.get(
-                "https://nominatim.openstreetmap.org/search",
-                params={"q": nom_q, "format": "json", "limit": limit, "addressdetails": 1},
-                headers={"User-Agent": "NinjaCoPilot/1.0"},
-                timeout=8
-            )
-            nom_results = nom_resp.json()
-
-            if nom_results:
-                results = []
-                for r in nom_results[:limit]:
-                    rlat = float(r.get("lat", 0))
-                    rlng = float(r.get("lon", 0))
-
-                    dist_m = None
-                    if lat and lng and rlat and rlng:
-                        dist_m = _haversine(float(lat), float(lng), rlat, rlng)
-
-                    results.append({
-                        "address": r.get("display_name", ""),
-                        "building": r.get("name", query),
-                        "postal": "",
-                        "lat": rlat,
-                        "lng": rlng,
-                        "search_val": query,
-                        "distance_m": dist_m,
-                        "source": "nominatim"
-                    })
-
-                if lat and lng:
-                    results.sort(key=lambda x: x.get("distance_m") or 999999)
-
-                return jsonify({
-                    "results": results,
-                    "total": len(results),
-                    "query": query,
-                    "source": "nominatim"
-                })
-        except Exception:
-            pass
-
-        return jsonify({"results": [], "total": 0, "query": query})
-
-    except Exception as e:
-        return jsonify({"error": str(e), "results": []})
-
-
-def _haversine(lat1, lng1, lat2, lng2):
-    """Calculate distance in meters between two GPS points."""
-    import math
-    R = 6371000
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lng2 - lng1)
-    a = (math.sin(dphi / 2) ** 2 +
-         math.cos(phi1) * math.cos(phi2) *
-         math.sin(dlam / 2) ** 2)
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return round(R * c)
+        return jsonify({
+            "error": str(e),
+            "lat": None,
+            "lng": None
+        })
 
 
 # =========================================================
@@ -347,12 +183,17 @@ def route():
         from_lng = request.args.get("from_lng")
         to_lat = request.args.get("to_lat")
         to_lng = request.args.get("to_lng")
+        mode = request.args.get("mode", "driving")  # driving | walking
+
+        # Only allow safe profiles
+        if mode not in ("driving", "walking"):
+            mode = "driving"
 
         if not all([from_lat, from_lng, to_lat, to_lng]):
             return jsonify({"error": "Missing coordinates"}), 400
 
         url = (
-            f"https://router.project-osrm.org/route/v1/driving/"
+            f"https://router.project-osrm.org/route/v1/{mode}/"
             f"{from_lng},{from_lat};{to_lng},{to_lat}"
             f"?overview=full&steps=true&annotations=false&geometries=geojson"
         )
@@ -496,6 +337,14 @@ def weather():
             "is_rain": False,
             "description": str(e)
         })
+
+
+# =========================================================
+# WEATHER CURRENT (driver live position - same logic)
+# =========================================================
+@app.route("/api/weather/current")
+def weather_current():
+    return weather()
 
 
 # =========================================================
