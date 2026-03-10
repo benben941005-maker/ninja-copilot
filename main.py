@@ -1,4 +1,9 @@
 import os
+import re
+import time
+import math
+import base64
+import tempfile
 import requests
 from flask import Flask, request, jsonify, send_from_directory
 
@@ -6,11 +11,20 @@ app = Flask(__name__, static_folder="static", static_url_path="/static")
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY", "")
 WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
 AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
-ONEMAP_TOKEN = os.environ.get("ONEMAP_TOKEN", "")
+
+ONEMAP_EMAIL = os.environ.get("ONEMAP_EMAIL", "")
+ONEMAP_PASSWORD = os.environ.get("ONEMAP_PASSWORD", "")
+
+_onemap_token = None
+_onemap_token_expiry = 0
 
 
+# =========================================================
+# STATIC
+# =========================================================
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
@@ -20,70 +34,116 @@ def index():
 def static_files(path):
     return send_from_directory("static", path)
 
+
+# =========================================================
+# HELPERS
+# =========================================================
+def safe_json(resp):
+    try:
+        return resp.json()
+    except Exception:
+        return {}
+
+
+def haversine_m(lat1, lng1, lat2, lng2):
+    r = 6371000
+    p1 = math.radians(lat1)
+    p2 = math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlng / 2) ** 2
+    return 2 * r * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def strip_postal_sg(text: str) -> str:
+    if not text:
+        return text
+    return re.sub(r"\bSingapore\s+(\d{6})\b", r"\1", text, flags=re.I).strip()
+
+
+# =========================================================
+# ONEMAP TOKEN
+# =========================================================
+def get_onemap_token():
+    global _onemap_token, _onemap_token_expiry
+
+    if _onemap_token and time.time() < _onemap_token_expiry:
+        return _onemap_token
+
+    if not ONEMAP_EMAIL or not ONEMAP_PASSWORD:
+        return None
+
+    url = "https://www.onemap.gov.sg/api/auth/post/getToken"
+    resp = requests.post(
+        url,
+        json={"email": ONEMAP_EMAIL, "password": ONEMAP_PASSWORD},
+        timeout=10,
+    )
+    data = safe_json(resp)
+
+    token = data.get("access_token")
+    if not token:
+        return None
+
+    _onemap_token = token
+    _onemap_token_expiry = time.time() + 3500
+    return _onemap_token
+
+
 # =========================================================
 # REVERSE GEOCODE
 # =========================================================
 @app.route("/api/geocode")
 def geocode():
-    """Reverse geocode GPS coordinates to street address.
-    Uses OneMap SG (official SLA geocoder) as primary when ONEMAP_TOKEN is set,
-    falls back to Nominatim/OpenStreetMap.
-    """
     try:
         lat = request.args.get("lat")
         lng = request.args.get("lng")
-
         if not lat or not lng:
             return jsonify({"error": "Missing lat/lng"}), 400
 
-        # ── Try OneMap SG first ──────────────────────────────
-        if ONEMAP_TOKEN:
+        token = get_onemap_token()
+        if token:
             try:
-                onemap_resp = requests.get(
+                resp = requests.get(
                     "https://www.onemap.gov.sg/api/public/revgeocode",
                     params={
                         "location": f"{lat},{lng}",
-                        "buffer": 40,          # 40m search radius
+                        "buffer": 40,
                         "addressType": "All",
-                        "otherFeatures": "N"
+                        "otherFeatures": "N",
                     },
-                    headers={"Authorization": ONEMAP_TOKEN},
-                    timeout=6
+                    headers={"Authorization": token},
+                    timeout=8,
                 )
-                onemap_data = onemap_resp.json()
-                results = onemap_data.get("GeocodeInfo", [])
-
+                data = safe_json(resp)
+                results = data.get("GeocodeInfo", [])
                 if results:
-                    # Pick the closest result (first is nearest)
                     best = results[0]
-                    blk   = best.get("BUILDINGNAME", "") or best.get("BLOCK", "")
-                    road  = best.get("ROAD", "")
-                    postal= best.get("POSTALCODE", "")
-                    building = best.get("BUILDINGNAME", "")
+                    block = (best.get("BLOCK") or "").strip()
+                    road = (best.get("ROAD") or "").strip()
+                    building = (best.get("BUILDINGNAME") or "").strip()
+                    postal = (best.get("POSTALCODE") or "").strip()
 
                     parts = []
-                    if blk and road:
-                        parts.append(f"{blk} {road}".strip())
-                    elif road:
-                        parts.append(road)
-                    if building and building != blk:
+                    first = f"{block} {road}".strip() if road else block
+                    if first:
+                        parts.append(first)
+                    if building and building not in parts and building != "NIL":
                         parts.append(building)
                     if postal and postal != "NIL":
                         parts.append(postal)
 
-                    address = ", ".join(p for p in parts if p)
+                    address = ", ".join([p for p in parts if p])
                     if address:
                         return jsonify({
                             "address": address,
-                            "source": "onemap",
                             "postal": postal if postal != "NIL" else None,
+                            "source": "onemap",
                             "raw": best,
-                            "total_results": len(results)
                         })
             except Exception:
-                pass  # Fall through to Nominatim
+                pass
 
-        # ── Fallback: Nominatim / OpenStreetMap ──────────────
         resp = requests.get(
             "https://nominatim.openstreetmap.org/reverse",
             params={
@@ -91,45 +151,80 @@ def geocode():
                 "lon": lng,
                 "format": "json",
                 "addressdetails": 1,
-                "zoom": 18
+                "zoom": 18,
             },
-            headers={"User-Agent": "NinjaCoPilot/1.0"},
-            timeout=8
+            headers={"User-Agent": "NinjaCoPilot/2.0"},
+            timeout=8,
         )
-        data = resp.json()
+        data = safe_json(resp)
         addr = data.get("address", {})
-        parts = []
 
+        parts = []
         road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") or ""
+        house = addr.get("house_number") or ""
         if road:
-            house = addr.get("house_number", "")
             parts.append((house + " " + road).strip())
 
-        area = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
-        if area:
-            parts.append(area)
+        suburb = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter") or ""
+        if suburb:
+            parts.append(suburb)
 
-        city = addr.get("city") or addr.get("town") or addr.get("village") or addr.get("county") or ""
-        if city:
-            parts.append(city)
-
-        postcode = addr.get("postcode", "")
+        postcode = addr.get("postcode") or ""
         if postcode:
             parts.append(postcode)
 
-        address = ", ".join(parts) if parts else data.get("display_name", f"{lat},{lng}")
-
-        return jsonify({
-            "address": address,
-            "source": "nominatim",
-            "raw": addr
-        })
+        address = ", ".join([p for p in parts if p]) or data.get("display_name") or f"{lat},{lng}"
+        return jsonify({"address": address, "source": "nominatim", "raw": addr})
 
     except Exception as e:
+        return jsonify({"error": str(e), "address": None})
+
+
+# =========================================================
+# GOOGLE PLACE SEARCH
+# =========================================================
+@app.route("/api/place-search")
+def place_search():
+    try:
+        q = (request.args.get("q") or "").strip()
+        user_lat = request.args.get("lat")
+        user_lng = request.args.get("lng")
+
+        if not q:
+            return jsonify({"error": "Missing query"}), 400
+        if not GOOGLE_PLACES_API_KEY:
+            return jsonify({"error": "GOOGLE_PLACES_API_KEY missing"}), 500
+
+        if not user_lat or not user_lng:
+            return jsonify({"error": "Missing user lat/lng"}), 400
+
+        resp = requests.get(
+            "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+            params={
+                "key": GOOGLE_PLACES_API_KEY,
+                "keyword": q,
+                "location": f"{user_lat},{user_lng}",
+                "radius": 3000,
+            },
+            timeout=10,
+        )
+        data = safe_json(resp)
+        results = data.get("results", [])
+        if not results:
+            return jsonify({"error": "Place not found"})
+
+        best = results[0]
+        loc = best.get("geometry", {}).get("location", {})
         return jsonify({
-            "address": None,
-            "error": str(e)
+            "name": best.get("name", q),
+            "address": best.get("vicinity") or best.get("name") or q,
+            "lat": loc.get("lat"),
+            "lng": loc.get("lng"),
+            "source": "google_places",
+            "raw": best,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 
 # =========================================================
@@ -137,39 +232,128 @@ def geocode():
 # =========================================================
 @app.route("/api/address-to-latlng")
 def address_to_latlng():
-    """Forward geocode: address text → lat/lng."""
     try:
-        address = request.args.get("address", "")
+        address = (request.args.get("address") or "").strip()
+        user_lat = request.args.get("user_lat")
+        user_lng = request.args.get("user_lng")
+        use_places = (request.args.get("use_places") or "1") == "1"
+
         if not address:
             return jsonify({"error": "Missing address"}), 400
 
+        # 1) Google Places first for business / POI search
+        if use_places and GOOGLE_PLACES_API_KEY and user_lat and user_lng:
+            try:
+                resp = requests.get(
+                    "https://maps.googleapis.com/maps/api/place/nearbysearch/json",
+                    params={
+                        "key": GOOGLE_PLACES_API_KEY,
+                        "keyword": address,
+                        "location": f"{user_lat},{user_lng}",
+                        "radius": 3500,
+                    },
+                    timeout=10,
+                )
+                data = safe_json(resp)
+                results = data.get("results", [])
+                if results:
+                    best = results[0]
+                    loc = best.get("geometry", {}).get("location", {})
+                    return jsonify({
+                        "lat": float(loc["lat"]),
+                        "lng": float(loc["lng"]),
+                        "display": best.get("vicinity") or best.get("name") or address,
+                        "place_name": best.get("name") or address,
+                        "source": "google_places",
+                        "raw": best,
+                    })
+            except Exception:
+                pass
+
+        # 2) OneMap next for SG addresses
+        token = get_onemap_token()
+        if token:
+            try:
+                resp = requests.get(
+                    "https://www.onemap.gov.sg/api/common/elastic/search",
+                    params={
+                        "searchVal": address,
+                        "returnGeom": "Y",
+                        "getAddrDetails": "Y",
+                        "pageNum": 1,
+                    },
+                    headers={"Authorization": token},
+                    timeout=10,
+                )
+                data = safe_json(resp)
+                results = data.get("results", []) or []
+                if results:
+                    if user_lat and user_lng:
+                        ulat = float(user_lat)
+                        ulng = float(user_lng)
+
+                        def score(item):
+                            try:
+                                lat = float(item.get("LATITUDE"))
+                                lng = float(item.get("LONGITUDE"))
+                                return haversine_m(ulat, ulng, lat, lng)
+                            except Exception:
+                                return 99999999
+
+                        results = sorted(results, key=score)
+
+                    best = results[0]
+                    display = " ".join([
+                        (best.get("BUILDING") or "").strip(),
+                        (best.get("BLK_NO") or "").strip(),
+                        (best.get("ROAD_NAME") or "").strip(),
+                        (best.get("POSTAL") or "").strip(),
+                    ]).strip()
+                    display = re.sub(r"\s+", " ", display)
+
+                    return jsonify({
+                        "lat": float(best["LATITUDE"]),
+                        "lng": float(best["LONGITUDE"]),
+                        "display": display or address,
+                        "place_name": best.get("BUILDING") or address,
+                        "source": "onemap",
+                        "raw": best,
+                    })
+            except Exception:
+                pass
+
+        # 3) OSM fallback
         resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": address, "format": "json", "limit": 1},
-            headers={"User-Agent": "NinjaCoPilot/1.0"},
-            timeout=8
+            params={"q": address, "format": "json", "limit": 5},
+            headers={"User-Agent": "NinjaCoPilot/2.0"},
+            timeout=10,
         )
-        results = resp.json()
-
+        results = safe_json(resp)
         if not results:
-            return jsonify({
-                "error": "Address not found",
-                "lat": None,
-                "lng": None
-            })
+            return jsonify({"error": "Address not found", "lat": None, "lng": None})
+
+        best = results[0]
+        if user_lat and user_lng:
+            ulat = float(user_lat)
+            ulng = float(user_lng)
+
+            def score(item):
+                return haversine_m(ulat, ulng, float(item["lat"]), float(item["lon"]))
+
+            results = sorted(results, key=score)
+            best = results[0]
 
         return jsonify({
-            "lat": float(results[0]["lat"]),
-            "lng": float(results[0]["lon"]),
-            "display": results[0].get("display_name", "")
+            "lat": float(best["lat"]),
+            "lng": float(best["lon"]),
+            "display": best.get("display_name", ""),
+            "place_name": address,
+            "source": "nominatim",
         })
 
     except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "lat": None,
-            "lng": None
-        })
+        return jsonify({"error": str(e), "lat": None, "lng": None})
 
 
 # =========================================================
@@ -177,15 +361,13 @@ def address_to_latlng():
 # =========================================================
 @app.route("/api/route")
 def route():
-    """Get turn-by-turn driving directions using OSRM."""
     try:
         from_lat = request.args.get("from_lat")
         from_lng = request.args.get("from_lng")
         to_lat = request.args.get("to_lat")
         to_lng = request.args.get("to_lng")
-        mode = request.args.get("mode", "driving")  # driving | walking
+        mode = request.args.get("mode", "driving")
 
-        # Only allow safe profiles
         if mode not in ("driving", "walking"):
             mode = "driving"
 
@@ -198,17 +380,16 @@ def route():
             f"?overview=full&steps=true&annotations=false&geometries=geojson"
         )
 
-        resp = requests.get(url, timeout=12)
-        data = resp.json()
+        resp = requests.get(url, timeout=15)
+        data = safe_json(resp)
 
         if data.get("code") != "Ok" or not data.get("routes"):
             return jsonify({"error": "No route found", "steps": []})
 
         route_data = data["routes"][0]
-        legs = route_data.get("legs", [])
-
         steps = []
-        for leg in legs:
+
+        for leg in route_data.get("legs", []):
             for step in leg.get("steps", []):
                 maneuver = step.get("maneuver", {})
                 name = step.get("name", "")
@@ -218,7 +399,7 @@ def route():
                 m_type = maneuver.get("type", "")
                 loc = maneuver.get("location", [None, None])
 
-                text = build_instruction(m_type, modifier, name, distance)
+                text = build_instruction(m_type, modifier, name, distance, mode)
                 if text:
                     steps.append({
                         "text": text,
@@ -227,61 +408,53 @@ def route():
                         "type": m_type,
                         "modifier": modifier,
                         "lat": loc[1] if len(loc) > 1 else None,
-                        "lng": loc[0] if len(loc) > 0 else None
+                        "lng": loc[0] if len(loc) > 0 else None,
                     })
-
-        total_dist = round(route_data.get("distance", 0))
-        total_time = round(route_data.get("duration", 0))
-        geometry = route_data.get("geometry", {})
 
         return jsonify({
             "steps": steps,
-            "total_distance": total_dist,
-            "total_duration": total_time,
-            "summary": f"{total_dist}m, ~{total_time // 60} min",
-            "geometry": geometry
+            "total_distance": round(route_data.get("distance", 0)),
+            "total_duration": round(route_data.get("duration", 0)),
+            "summary": f'{round(route_data.get("distance", 0))}m, ~{max(1, round(route_data.get("duration", 0)) // 60)} min',
+            "geometry": route_data.get("geometry", {}),
         })
 
     except Exception as e:
-        return jsonify({
-            "error": str(e),
-            "steps": []
-        })
+        return jsonify({"error": str(e), "steps": []})
 
 
-def build_instruction(m_type, modifier, name, distance):
-    """Convert OSRM maneuver into spoken direction."""
+def build_instruction(m_type, modifier, name, distance, mode):
     dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance / 1000, 1)}km"
     road = f" onto {name}" if name else ""
+    verb = "Walk" if mode == "walking" else "Drive"
 
     if m_type == "depart":
-        return f"Start driving{road} for {dist_str}"
-    elif m_type == "arrive":
+        return f"Start {verb.lower()}ing{road} for {dist_str}"
+    if m_type == "arrive":
         return f"You have arrived at your destination{road}"
-    elif m_type == "turn":
+    if m_type == "turn":
         return f"Turn {modifier}{road}, continue for {dist_str}"
-    elif m_type == "new name":
+    if m_type == "new name":
         return f"Continue{road} for {dist_str}"
-    elif m_type == "merge":
+    if m_type == "merge":
         return f"Merge {modifier}{road} for {dist_str}"
-    elif m_type == "fork":
+    if m_type == "fork":
         return f"Keep {modifier} at the fork{road} for {dist_str}"
-    elif m_type in ("roundabout", "rotary"):
-        return f"Enter roundabout, exit{road}, continue for {dist_str}"
-    elif m_type == "end of road":
+    if m_type in ("roundabout", "rotary"):
+        return f"Enter roundabout, continue{road} for {dist_str}"
+    if m_type == "end of road":
         return f"At end of road, turn {modifier}{road} for {dist_str}"
-    elif m_type == "continue":
+    if m_type == "continue":
         return f"Continue straight{road} for {dist_str}"
-    elif m_type in ("on ramp", "off ramp"):
+    if m_type in ("on ramp", "off ramp"):
         return f"Take the ramp {modifier}{road} for {dist_str}"
-    elif m_type == "notification":
+    if m_type == "notification":
         return None
-    else:
-        if modifier:
-            return f"Go {modifier}{road} for {dist_str}"
-        elif name:
-            return f"Continue on {name} for {dist_str}"
-        return None
+    if modifier:
+        return f"Go {modifier}{road} for {dist_str}"
+    if name:
+        return f"Continue on {name} for {dist_str}"
+    return None
 
 
 # =========================================================
@@ -289,11 +462,9 @@ def build_instruction(m_type, modifier, name, distance):
 # =========================================================
 @app.route("/api/weather")
 def weather():
-    """Check weather at destination lat/lng using WeatherAPI."""
     try:
         lat = request.args.get("lat")
         lng = request.args.get("lng")
-
         if not lat or not lng:
             return jsonify({"error": "Missing lat/lng"}), 400
 
@@ -301,50 +472,32 @@ def weather():
             return jsonify({
                 "status": "weather_unavailable",
                 "is_rain": False,
-                "description": "Weather API key not configured"
+                "description": "Weather API key not configured",
             })
 
         resp = requests.get(
             "https://api.weatherapi.com/v1/current.json",
-            params={
-                "key": WEATHER_API_KEY,
-                "q": f"{lat},{lng}"
-            },
-            timeout=10
+            params={"key": WEATHER_API_KEY, "q": f"{lat},{lng}"},
+            timeout=10,
         )
-        data = resp.json()
-
-        condition_text = str(
-            data.get("current", {})
-                .get("condition", {})
-                .get("text", "")
-        ).lower()
-
+        data = safe_json(resp)
+        desc = str(data.get("current", {}).get("condition", {}).get("text", "")).lower()
         rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
-        is_rain = any(k in condition_text for k in rain_keywords)
+        is_rain = any(k in desc for k in rain_keywords)
 
         return jsonify({
             "status": "ok",
             "is_rain": is_rain,
-            "description": condition_text or "unknown",
+            "description": desc or "unknown",
             "temp_c": data.get("current", {}).get("temp_c"),
-            "raw": data
+            "raw": data,
         })
-
     except Exception as e:
         return jsonify({
             "status": "weather_error",
             "is_rain": False,
-            "description": str(e)
+            "description": str(e),
         })
-
-
-# =========================================================
-# WEATHER CURRENT (driver live position - same logic)
-# =========================================================
-@app.route("/api/weather/current")
-def weather_current():
-    return weather()
 
 
 # =========================================================
@@ -363,13 +516,12 @@ def chat():
             reply = call_claude(system, messages)
 
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 # =========================================================
-# OCR / VISION SCAN
+# OCR / VISION
 # =========================================================
 @app.route("/api/scan", methods=["POST"])
 def scan():
@@ -377,7 +529,7 @@ def scan():
         data = request.json or {}
         system = data.get("system", "")
         image_base64 = data.get("image_base64", "")
-        ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
+        ocr_prompt = data.get("ocr_prompt", "Extract address from this image.")
 
         if AI_PROVIDER == "openai" and OPENAI_API_KEY:
             reply = call_openai_vision(system, image_base64, ocr_prompt)
@@ -385,7 +537,6 @@ def scan():
             reply = call_claude_vision(system, image_base64, ocr_prompt)
 
         return jsonify({"reply": reply})
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -395,11 +546,7 @@ def scan():
 # =========================================================
 @app.route("/api/transcribe", methods=["POST"])
 def transcribe():
-    """Transcribe audio using OpenAI Whisper."""
     try:
-        import base64
-        import tempfile
-
         data = request.json or {}
         audio_base64 = data.get("audio_base64", "")
         language = data.get("language", "en")
@@ -407,66 +554,54 @@ def transcribe():
         if not audio_base64:
             return jsonify({"error": "No audio", "text": ""})
 
+        if not OPENAI_API_KEY:
+            return jsonify({
+                "error": "OPENAI_API_KEY missing for transcription",
+                "text": ""
+            })
+
         audio_bytes = base64.b64decode(audio_base64)
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+            f.write(audio_bytes)
+            temp_path = f.name
 
-        if OPENAI_API_KEY:
-            with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
-                f.write(audio_bytes)
-                temp_path = f.name
+        try:
+            lang_map = {
+                "en": "en", "en-SG": "en",
+                "zh-CN": "zh", "zh-TW": "zh", "zh-HK": "zh",
+                "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th",
+                "vi-VN": "vi", "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja",
+            }
+            whisper_lang = "en"
+            for code, wl in lang_map.items():
+                if language == code or language.startswith(code.split("-")[0]):
+                    whisper_lang = wl
+                    break
 
+            with open(temp_path, "rb") as audio_file:
+                resp = requests.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    files={"file": ("audio.webm", audio_file, "audio/webm")},
+                    data={"model": "whisper-1", "language": whisper_lang},
+                    timeout=30,
+                )
+
+            result = safe_json(resp)
             try:
-                lang_map = {
-                    "en": "en",
-                    "en-SG": "en",
-                    "zh-CN": "zh",
-                    "zh-TW": "zh",
-                    "zh-HK": "zh",
-                    "ms-MY": "ms",
-                    "ta-IN": "ta",
-                    "th-TH": "th",
-                    "vi-VN": "vi",
-                    "id-ID": "id",
-                    "ko-KR": "ko",
-                    "ja-JP": "ja"
-                }
-
-                whisper_lang = "en"
-                for code, wl in lang_map.items():
-                    if language == code or language.startswith(code.split("-")[0]):
-                        whisper_lang = wl
-                        break
-
-                with open(temp_path, "rb") as audio_file:
-                    resp = requests.post(
-                        "https://api.openai.com/v1/audio/transcriptions",
-                        headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                        files={"file": ("audio.webm", audio_file, "audio/webm")},
-                        data={"model": "whisper-1", "language": whisper_lang},
-                        timeout=30
-                    )
-
-                result = resp.json()
                 os.unlink(temp_path)
+            except Exception:
+                pass
 
-                if "text" in result:
-                    return jsonify({"text": result["text"]})
-                else:
-                    return jsonify({
-                        "error": result.get("error", {}).get("message", "Whisper error"),
-                        "text": ""
-                    })
+            if "text" in result:
+                return jsonify({"text": result["text"]})
+            return jsonify({"error": result.get("error", {}).get("message", "Whisper error"), "text": ""})
 
-            except Exception as e:
-                try:
-                    os.unlink(temp_path)
-                except Exception:
-                    pass
-                return jsonify({"error": str(e), "text": ""})
-
-        return jsonify({
-            "error": "Set OPENAI_API_KEY for voice in Chrome. Or use Safari browser.",
-            "text": ""
-        })
+        finally:
+            try:
+                os.unlink(temp_path)
+            except Exception:
+                pass
 
     except Exception as e:
         return jsonify({"error": str(e), "text": ""})
@@ -484,21 +619,19 @@ def call_claude(system, messages):
         headers={
             "Content-Type": "application/json",
             "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01"
+            "anthropic-version": "2023-06-01",
         },
         json={
             "model": "claude-sonnet-4-20250514",
             "max_tokens": 300,
             "system": system,
-            "messages": messages
+            "messages": messages,
         },
-        timeout=30
+        timeout=30,
     )
-    data = resp.json()
-
+    data = safe_json(resp)
     if "error" in data:
         raise Exception(data["error"].get("message", str(data["error"])))
-
     return "".join(block.get("text", "") for block in data.get("content", []))
 
 
@@ -511,7 +644,7 @@ def call_claude_vision(system, image_base64, prompt):
         headers={
             "Content-Type": "application/json",
             "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01"
+            "anthropic-version": "2023-06-01",
         },
         json={
             "model": "claude-sonnet-4-20250514",
@@ -525,23 +658,21 @@ def call_claude_vision(system, image_base64, prompt):
                         "source": {
                             "type": "base64",
                             "media_type": "image/jpeg",
-                            "data": image_base64
-                        }
+                            "data": image_base64,
+                        },
                     },
                     {
                         "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }]
+                        "text": prompt,
+                    },
+                ],
+            }],
         },
-        timeout=30
+        timeout=30,
     )
-    data = resp.json()
-
+    data = safe_json(resp)
     if "error" in data:
         raise Exception(data["error"].get("message", str(data["error"])))
-
     return "".join(block.get("text", "") for block in data.get("content", []))
 
 
@@ -553,20 +684,18 @@ def call_openai(system, messages):
         "https://api.openai.com/v1/chat/completions",
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         },
         json={
             "model": "gpt-4o",
             "max_tokens": 300,
-            "messages": [{"role": "system", "content": system}] + messages
+            "messages": [{"role": "system", "content": system}] + messages,
         },
-        timeout=30
+        timeout=30,
     )
-    data = resp.json()
-
+    data = safe_json(resp)
     if "error" in data:
         raise Exception(data["error"].get("message", "OpenAI error"))
-
     return data["choices"][0]["message"]["content"]
 
 
@@ -578,7 +707,7 @@ def call_openai_vision(system, image_base64, prompt):
         "https://api.openai.com/v1/chat/completions",
         headers={
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {OPENAI_API_KEY}"
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
         },
         json={
             "model": "gpt-4o",
@@ -588,27 +717,17 @@ def call_openai_vision(system, image_base64, prompt):
                 {
                     "role": "user",
                     "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{image_base64}"
-                            }
-                        },
-                        {
-                            "type": "text",
-                            "text": prompt
-                        }
-                    ]
-                }
-            ]
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                        {"type": "text", "text": prompt},
+                    ],
+                },
+            ],
         },
-        timeout=30
+        timeout=30,
     )
-    data = resp.json()
-
+    data = safe_json(resp)
     if "error" in data:
         raise Exception(data["error"].get("message", "OpenAI error"))
-
     return data["choices"][0]["message"]["content"]
 
 
