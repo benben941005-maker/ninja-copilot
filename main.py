@@ -184,7 +184,6 @@ def address_to_latlng():
                     lat = float(r.get("LATITUDE", 0))
                     lng = float(r.get("LONGITUDE", 0))
                     if lat and lng:
-                        postal = r.get("POSTAL", "")
                         display = r.get("ADDRESS", address)
                         return jsonify({
                             "lat": lat, "lng": lng, "display": display,
@@ -401,6 +400,7 @@ def weather():
 
 # =========================================================
 # CHAT — Claude or OpenAI
+# FIX: max_tokens reduced to 80 to force short GPS-style replies
 # =========================================================
 @app.route("/api/chat", methods=["POST"])
 def chat():
@@ -440,7 +440,7 @@ def call_claude_chat(system_prompt, messages):
         },
         json={
             "model": "claude-sonnet-4-5",
-            "max_tokens": 300,
+            "max_tokens": 80,  # FIX: was 300 — forces short GPS-style replies
             "system": system_prompt,
             "messages": messages
         },
@@ -457,7 +457,7 @@ def call_openai_chat(system_prompt, messages):
     resp = requests.post(
         "https://api.openai.com/v1/chat/completions",
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-        json={"model": "gpt-4o", "max_tokens": 300, "messages": oai_messages},
+        json={"model": "gpt-4o", "max_tokens": 80, "messages": oai_messages},  # FIX: was 300
         timeout=30
     )
     data = resp.json()
@@ -503,7 +503,7 @@ def scan_claude(image_base64, prompt, system_prompt):
         },
         json={
             "model": "claude-sonnet-4-5",
-            "max_tokens": 500,
+            "max_tokens": 500,  # scan stays at 500 — needs room for JSON output
             "system": system_prompt,
             "messages": [{
                 "role": "user",
@@ -527,7 +527,7 @@ def scan_openai(image_base64, prompt, system_prompt):
         headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
         json={
             "model": "gpt-4o",
-            "max_tokens": 500,
+            "max_tokens": 500,  # scan stays at 500
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": [
