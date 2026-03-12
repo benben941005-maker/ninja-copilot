@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_ID:   ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: ninja-copilot
-  REGION: asia-southeast1
+  REGION:       asia-southeast1
 
 jobs:
   deploy:
@@ -38,7 +38,8 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} .
-          docker tag gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
+          docker tag  gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+                      gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:latest
 
       - name: Push Docker image
         run: |
@@ -48,9 +49,9 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy ${{ env.SERVICE_NAME }} \
-            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
+            --image    gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}:${{ github.sha }} \
             --platform managed \
-            --region ${{ env.REGION }} \
+            --region   ${{ env.REGION }} \
             --allow-unauthenticated \
             --port 8080 \
             --memory 512Mi \
@@ -58,11 +59,18 @@ jobs:
             --min-instances 0 \
             --max-instances 3 \
             --timeout 60 \
-            --set-env-vars "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }},ONEMAP_EMAIL=${{ secrets.ONEMAP_EMAIL }},ONEMAP_PASSWORD=${{ secrets.ONEMAP_PASSWORD }},WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }},AI_PROVIDER=claude"
+            --set-env-vars "\
+ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }},\
+OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},\
+GOOGLE_PLACES_API_KEY=${{ secrets.GOOGLE_PLACES_API_KEY }},\
+ONEMAP_EMAIL=${{ secrets.ONEMAP_EMAIL }},\
+ONEMAP_PASSWORD=${{ secrets.ONEMAP_PASSWORD }},\
+WEATHER_API_KEY=${{ secrets.WEATHER_API_KEY }},\
+AI_PROVIDER=claude"
 
       - name: Show deployment URL
         run: |
           echo "Deployed to:"
           gcloud run services describe ${{ env.SERVICE_NAME }} \
             --region ${{ env.REGION }} \
-            --format="value(status.url)"
+            --format "value(status.url)"
