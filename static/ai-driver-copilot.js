@@ -1,6 +1,17 @@
 (function () {
     "use strict";
 
+    // Show JS errors visibly in chat for debugging
+    window.onerror = function(msg, src, line) {
+        var el = document.getElementById("chat");
+        if (el) {
+            var d = document.createElement("div");
+            d.style.cssText = "color:#ff4444;font-size:11px;padding:8px;background:rgba(255,0,0,0.1);border-radius:8px;margin:6px";
+            d.textContent = "JS Error: " + msg + " (line " + line + ")";
+            el.appendChild(d);
+        }
+    };
+
     var MAX_DIM = 1600, MAX_BYTES = 5 * 1024 * 1024;
     var ETA_NOTIFY_SECONDS = 300;
     var ETA_NOTIFY_METERS = 1200;
