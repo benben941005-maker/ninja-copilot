@@ -6,7 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py .
-COPY index.html .
+COPY static/ ./static/
 
 EXPOSE 8080
 
