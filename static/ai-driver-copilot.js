@@ -493,6 +493,8 @@
             camVideo.srcObject = stream;
             camOverlay.classList.add("active");
             camActive = true;
+            // Force play on iOS/Android (autoplay policy requires explicit call)
+            camVideo.play().catch(function () {});
 
             // Show AI reply area
             if (camAiReply) {
