@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0b0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Ninja Co-Pilot</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:      #E31837;
+      --red-dim:  #a01028;
+      --red-glow: rgba(227,24,55,0.22);
+      --bg:       #0a0b0f;
+      --bg2:      #11131a;
+      --bg3:      #181c26;
+      --line:     rgba(255,255,255,0.07);
+      --line2:    rgba(255,255,255,0.12);
+      --txt:      #e8eaf0;
+      --txt2:     rgba(232,234,240,0.55);
+      --txt3:     rgba(232,234,240,0.28);
+      --green:    #25D366;
+      --blue:     #3a8dde;
+      --amber:    #f5a623;
+    }
+
+    html, body {
+      height: 100%;
+      background: #0a0b0f;
+      color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Shell — flex column, no overflow hidden so footer stays visible */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      height: 100dvh;
+    }
+
+    /* Subtle red glow bg — NOT fixed/z-index, won't block taps */
+    #app::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 200px;
+      background: radial-gradient(ellipse 70% 100% at 50% 0%,
+        rgba(227,24,55,0.07) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* All direct children sit above the bg glow */
+    #hdr, #langBar, #chat, #sb, #chips, #micBar, #inpArea, #gpsBanner {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── HEADER ────────────────────────────────────────── */
+    #hdr {
+      flex-shrink: 0;
+      height: 54px;
+      background: var(--bg2);
+      border-bottom: 2px solid transparent;
+      border-image: linear-gradient(90deg, transparent, var(--red) 30%, var(--red) 70%, transparent) 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+    }
+
+    .logo { display: flex; align-items: center; gap: 9px; }
+
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: var(--red);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+      box-shadow: 0 0 16px rgba(227,24,55,0.5);
+    }
+
+    .logo-text { display: flex; flex-direction: column; line-height: 1; }
+
+    .logo-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700; font-size: 17px; letter-spacing: 0.4px; color: #fff;
+    }
+
+    .logo-sub {
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--red); font-weight: 600; margin-top: 1px;
+    }
+
+    #locBar {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--bg3); border: 1px solid var(--line2);
+      border-radius: 20px; padding: 5px 10px 5px 8px;
+      max-width: 50vw; overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    #locBar.no-gps { border-color: rgba(245,166,35,0.5); }
+
+    .gps-dot {
+      width: 7px; height: 7px; background: var(--green);
+      border-radius: 50%; flex-shrink: 0;
+      box-shadow: 0 0 6px var(--green); animation: blink 2s infinite;
+    }
+
+    #locBar.no-gps .gps-dot {
+      background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: none;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    #locAddr {
+      font-size: 10px; color: var(--txt2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-weight: 500;
+    }
+
+    /* ── GPS BANNER ─────────────────────────────────────── */
+    #gpsBanner {
+      display: none; flex-shrink: 0;
+      background: rgba(245,166,35,0.10);
+      border-bottom: 1px solid rgba(245,166,35,0.30);
+      padding: 7px 14px; font-size: 12px; color: var(--amber);
+      font-weight: 500; text-align: center; letter-spacing: 0.2px;
+    }
+
+    #gpsBanner.show { display: block; }
+
+    /* ── LANGUAGE BAR ───────────────────────────────────── */
+    #langBar {
+      flex-shrink: 0; height: 42px;
+      background: var(--bg2); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+
+    #langBar::-webkit-scrollbar { display: none; }
+
+    #langBar button {
+      flex-shrink: 0; height: 30px; padding: 0 11px;
+      border-radius: 6px; border: 1px solid var(--line2);
+      background: var(--bg3); color: var(--txt2);
+      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.15);
+      transition: background 0.12s, color 0.12s;
+    }
+
+    #langBar button.active, #langBar button.sel {
+      background: var(--red); border-color: var(--red); color: #fff;
+    }
+
+    /* ── CHAT ───────────────────────────────────────────── */
+    #chat {
+      flex: 1; min-height: 0;
+      overflow-y: auto; overflow-x: hidden;
+      padding: 12px 12px 8px;
+      display: flex; flex-direction: column; gap: 10px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin; scrollbar-color: var(--line2) transparent;
+    }
+
+    #chat::-webkit-scrollbar { width: 3px; }
+    #chat::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+    .mr { display: flex; align-items: flex-end; gap: 7px; animation: rise 0.2s ease; }
+    @keyframes rise { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+    .mr.u { flex-direction: row-reverse; }
+
+    .av {
+      width: 28px; height: 28px; background: var(--bg3);
+      border: 1px solid rgba(227,24,55,0.25); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+
+    .bb {
+      max-width: 80%; padding: 9px 12px; font-size: 13px;
+      line-height: 1.55; border-radius: 14px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    .bb img { display:block; max-width:100%; border-radius:8px; margin-bottom:5px; }
+    .bb.a { background:var(--bg3); border:1px solid var(--line); border-bottom-left-radius:4px; }
+    .bb.u { background:linear-gradient(135deg,var(--red),#c01430); border-bottom-right-radius:4px; color:#fff; }
+
+    .proc {
+      display:flex; align-items:center; gap:8px;
+      color:var(--txt3); font-size:12px; font-style:italic; padding:2px 6px;
+    }
+    .proc::before {
+      content:""; width:13px; height:13px;
+      border:2px solid var(--line2); border-top-color:var(--red);
+      border-radius:50%; animation:spin 0.65s linear infinite; flex-shrink:0;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ── STEPS BAR ──────────────────────────────────────── */
+    #sb {
+      flex-shrink: 0; background: var(--bg2);
+      border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+      overflow-x: auto; scrollbar-width: none; display: none;
+    }
+    #sb:not(:empty) { display: block; }
+    #sb::-webkit-scrollbar { display: none; }
+
+    /* ── QUICK CHIPS ────────────────────────────────────── */
+    #chips {
+      flex-shrink: 0; height: 44px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      border-top: 1px solid var(--line); background: var(--bg2);
+    }
+    #chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+      flex-shrink: 0; height: 30px; padding: 0 13px;
+      border-radius: 15px; border: 1px solid var(--line2);
+      background: var(--bg3); color: var(--txt2);
+      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
+      -webkit-user-select: none; user-select: none;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .chip:active { background:rgba(227,24,55,0.18); border-color:rgba(227,24,55,0.5); color:#fff; }
+
+    /* ── MIC BAR ────────────────────────────────────────── */
+    #micBar {
+      flex-shrink: 0; max-height: 0; overflow: hidden;
+      background: rgba(227,24,55,0.06);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: max-height 0.3s ease;
+    }
+    #micBar.on { max-height: 40px; border-top: 1px solid rgba(227,24,55,0.2); }
+
+    .mic-waves { display:flex; gap:3px; align-items:flex-end; height:20px; }
+    .mic-waves span { width:3px; border-radius:2px; background:var(--red); }
+    #micBar.on .mic-waves span:nth-child(1) { animation:mw 1s ease-in-out 0.00s infinite; }
+    #micBar.on .mic-waves span:nth-child(2) { animation:mw 1s ease-in-out 0.10s infinite; }
+    #micBar.on .mic-waves span:nth-child(3) { animation:mw 1s ease-in-out 0.20s infinite; }
+    #micBar.on .mic-waves span:nth-child(4) { animation:mw 1s ease-in-out 0.10s infinite; }
+    #micBar.on .mic-waves span:nth-child(5) { animation:mw 1s ease-in-out 0.00s infinite; }
+    .mic-waves span:nth-child(1),.mic-waves span:nth-child(5){height:5px}
+    .mic-waves span:nth-child(2),.mic-waves span:nth-child(4){height:10px}
+    .mic-waves span:nth-child(3){height:18px}
+    @keyframes mw { 0%,100%{transform:scaleY(.35);opacity:.5} 50%{transform:scaleY(1);opacity:1} }
+
+    #micLabel {
+      font-family: 'Rajdhani', sans-serif; font-size:11px;
+      font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--red);
+    }
+
+    /* ── INPUT FOOTER ───────────────────────────────────── */
+    #inpArea {
+      flex-shrink: 0; background: var(--bg2);
+      border-top: 1px solid var(--line);
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .inp-row { display:flex; gap:7px; align-items:center; }
+
+    #inp {
+      flex: 1; height: 42px; background: var(--bg3);
+      border: 1px solid var(--line2); border-radius: 11px;
+      padding: 0 14px; color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      /* 16px prevents iOS auto-zoom on focus */
+      font-size: 16px;
+      outline: none; caret-color: var(--red);
+      transition: border-color 0.2s;
+    }
+    #inp::placeholder { color: var(--txt3); }
+    #inp:focus { border-color: rgba(227,24,55,0.5); }
+
+    #sendBtn {
+      width: 42px; height: 42px; border-radius: 11px;
+      border: 1px solid var(--line2); background: var(--bg3);
+      color: var(--txt3); cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+    }
+    #sendBtn.on { background:var(--red); border-color:var(--red); color:#fff; box-shadow:0 0 14px var(--red-glow); }
+
+    /* ── ACTION BUTTONS ─────────────────────────────────── */
+    .btn-row { display:flex; gap:6px; }
+
+    .act-btn {
+      flex: 1;
+      min-height: 52px;         /* big tap target */
+      border-radius: 11px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+      color: var(--txt2);
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700; text-transform: uppercase;
+      cursor: pointer;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+      line-height: 1;
+      /* Touch reliability */
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
+      -webkit-user-select: none; user-select: none;
+      transition: background 0.1s, transform 0.08s, box-shadow 0.12s;
+    }
+    .act-btn:active { transform: scale(0.93); background: rgba(255,255,255,0.05); }
+
+    .btn-icon { font-size: 20px; line-height: 1; }
+    .btn-lbl  { font-size: 9px; letter-spacing: 0.4px; color: var(--txt3); margin-top: 1px; }
+
+    #voiceBtn { flex: 1.5; border-color: rgba(227,24,55,0.28); }
+    #voiceBtn.active {
+      background: var(--red); border-color: var(--red); color: #fff;
+      animation: glow 1.8s ease-in-out infinite;
+    }
+    #voiceBtn.active .btn-lbl { color: rgba(255,255,255,0.75); }
+    @keyframes glow {
+      0%,100%{ box-shadow:0 0 14px rgba(227,24,55,0.35) }
+      50%    { box-shadow:0 0 26px rgba(227,24,55,0.65) }
+    }
+
+    #scanBtn,#photoBtn { border-color:rgba(58,141,222,0.22); }
+    #navBtn  { border-color:rgba(37,211,102,0.22); color:var(--green); }
+    #navBtn .btn-lbl { color:rgba(37,211,102,0.45); }
+    #stopBtn { border-color:rgba(227,24,55,0.22); color:var(--red); }
+    #stopBtn .btn-lbl { color:rgba(227,24,55,0.45); }
+
+    /* Hidden inputs — no stacking context interference */
+    #cameraIn, #photoIn { display:none; }
+  </style>
+</head>
+
+<body>
+<div id="app">
+
+  <header id="hdr">
+    <div class="logo">
+      <div class="logo-icon">🥷</div>
+      <div class="logo-text">
+        <span class="logo-title">Ninja Co-Pilot</span>
+        <span class="logo-sub">AI Senior Driver</span>
+      </div>
+    </div>
+    <div id="locBar" class="no-gps">
+      <div class="gps-dot"></div>
+      <span id="locAddr">Allow GPS to start</span>
+    </div>
+  </header>
+
+  <div id="gpsBanner">
+    📍 Please allow location access when browser prompts — needed for navigation
+  </div>
+
+  <nav id="langBar" aria-label="Language selector"></nav>
+
+  <main id="chat" role="log" aria-live="polite"></main>
+
+  <div id="sb" role="navigation" aria-label="Route steps"></div>
+
+  <div id="chips" role="toolbar" aria-label="Quick actions"></div>
+
+  <div id="micBar" role="status" aria-live="polite">
+    <div class="mic-waves">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <span id="micLabel">HANDS-FREE ACTIVE</span>
+  </div>
+
+  <footer id="inpArea">
+    <div class="inp-row">
+      <input id="inp" type="text" inputmode="text"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        placeholder="Ask Co-Pilot…" enterkeyhint="send" aria-label="Message" />
+      <button id="sendBtn" aria-label="Send">➤</button>
+    </div>
+
+    <div class="btn-row">
+      <button id="voiceBtn" class="act-btn">
+        <span class="btn-icon">🎙️</span>
+        <span class="btn-lbl">TAP TO SPEAK</span>
+      </button>
+      <button id="scanBtn" class="act-btn">
+        <span class="btn-icon">📷</span>
+        <span class="btn-lbl">SCAN</span>
+      </button>
+      <button id="photoBtn" class="act-btn">
+        <span class="btn-icon">🖼️</span>
+        <span class="btn-lbl">PHOTO</span>
+      </button>
+      <button id="navBtn" class="act-btn">
+        <span class="btn-icon">🗺️</span>
+        <span class="btn-lbl">NAV</span>
+      </button>
+      <button id="stopBtn" class="act-btn">
+        <span class="btn-icon">🔇</span>
+        <span class="btn-lbl">STOP</span>
+      </button>
+    </div>
+  </footer>
+
+</div>
+
+<input id="cameraIn" type="file" accept="image/*" capture="environment" />
+<input id="photoIn"  type="file" accept="image/*" />
+
+<script>
+  // Show GPS banner if not acquired after 4 seconds
+  (function () {
+    var banner  = document.getElementById("gpsBanner");
+    var locBar  = document.getElementById("locBar");
+    var timer   = setTimeout(function () {
+      if (locBar.classList.contains("no-gps")) banner.classList.add("show");
+    }, 4000);
+    var obs = new MutationObserver(function () {
+      if (!locBar.classList.contains("no-gps")) {
+        banner.classList.remove("show");
+        clearTimeout(timer);
+        obs.disconnect();
+      }
+    });
+    obs.observe(locBar, { attributes: true, attributeFilter: ["class"] });
+  })();
+</script>
+
+<script src="/static/ai-driver-copilot.js"></script>
+</body>
+</html>
