@@ -32,6 +32,16 @@ def static_files(path):
 def health():
     return jsonify({"status": "ok"})
 
+@app.get("/api/test")
+def test():
+    return {
+        "claude": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "openai": bool(os.environ.get("OPENAI_API_KEY")),
+        "google_places": bool(os.environ.get("GOOGLE_PLACES_API_KEY")),
+        "onemap": bool(os.environ.get("ONEMAP_EMAIL")),
+        "weather": bool(os.environ.get("WEATHER_API_KEY"))
+    }
+
 
 # =========================================================
 # ONEMAP TOKEN
