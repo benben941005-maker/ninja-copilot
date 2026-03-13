@@ -1549,15 +1549,20 @@ setTimeout(function () {
     }
 
     function speakCurrentStepIfNeeded(force) {
-        if (!navActive || !activeRoute || !activeRoute.steps) return;
-        if (activeStepIndex >= activeRoute.steps.length) return;
-        if (!force && lastSpokenStep === activeStepIndex) return;
-        var step = activeRoute.steps[activeStepIndex];
-        if (!step || !step.text) return;
-        lastSpokenStep = activeStepIndex;
-        detectLang(step.text);
-        speak(tuneReplyByLanguage(step.text));
-    }
+    if (!navActive || !activeRoute || !activeRoute.steps) return;
+    if (activeStepIndex >= activeRoute.steps.length) return;
+    if (!force && lastSpokenStep === activeStepIndex) return;
+
+    var step = activeRoute.steps[activeStepIndex];
+    if (!step) return;
+
+    var fixedText = formatStepTextForMode(step, routingMode);
+    if (!fixedText) return;
+
+    lastSpokenStep = activeStepIndex;
+    detectLang(fixedText);
+    speak(tuneReplyByLanguage(fixedText));
+}
 
     function maybeShowArrivalNotify() {
         if (!navActive || !activeRoute || notifyShownForRoute) return;
@@ -1595,7 +1600,8 @@ setTimeout(function () {
         var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
 
         if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
-            var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(step.text);
+            var fixedText = formatStepTextForMode(step, routingMode);
+            var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + tuneReplyByLanguage(fixedText);
             detectLang(warnText); speak(warnText);
             lastSpokenStep = activeStepIndex;
             highlightActiveStep();
@@ -1639,43 +1645,76 @@ setTimeout(function () {
     }
 
     // ── Route card ─────────────────────────────────────────
-    function showRouteSteps(route) {
-        removeEl("routeCard");
-        if (!route || !route.steps || !route.steps.length) return;
+    function formatStepTextForMode(step, mode) {
+    if (!step) return "";
 
-        var modeLabel = routingMode === "walking" ? "🚶 Walk" : "🚗 Drive";
+    var text = String(step.text || "").trim();
+    var distance = Math.round(step.distance || 0);
 
-        var div = document.createElement("div");
-        div.id = "routeCard";
-        var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
-        var totalM = Math.round(route.total_distance || 0);
-var totalMin = Math.max(1, Math.round((route.total_duration || 0) / 60));
-
-html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 '
-     + esc(route.summary || "")
-     + ' ' + modeLabel
-     + ' • ' + totalM + 'm'
-     + ' • ' + totalMin + ' min'
-     + '</div>';
-        route.steps.forEach(function (s, i) {
-            html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
-            html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
-            html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(s.text)) + '</div></div>';
-        });
-
-        html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Step</button>';
-        html += '</div></div>';
-
-        div.innerHTML = html;
-        chatEl.appendChild(div);
-        scrollDown();
-
-        document.getElementById("rSpk").addEventListener("click", function () {
-            unlockSpeech();
-            speakCurrentStepIfNeeded(true);
-        });
+    // Force correct first-step wording for depart instruction
+    if (step.type === "depart") {
+        if (mode === "walking") {
+            return "Start walking for " + distance + "m";
+        }
+        return "Start driving for " + distance + "m";
     }
+
+    // Safety replacements in case backend sends drive wording during walk mode
+    if (mode === "walking") {
+        text = text
+            .replace(/^Start driving\b/i, "Start walking")
+            .replace(/\bdrive\b/gi, "walk")
+            .replace(/\bdriving\b/gi, "walking");
+    } else {
+        text = text
+            .replace(/^Start walking\b/i, "Start driving")
+            .replace(/\bwalk\b/gi, "drive")
+            .replace(/\bwalking\b/gi, "driving");
+    }
+
+    return text;
+}
+    function showRouteSteps(route) {
+    removeEl("routeCard");
+    if (!route || !route.steps || !route.steps.length) return;
+
+    var modeLabel = routingMode === "walking" ? "🚶 Walk" : "🚗 Drive";
+
+    var div = document.createElement("div");
+    div.id = "routeCard";
+
+    var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
+    var totalM = Math.round(route.total_distance || 0);
+    var totalMin = Math.max(1, Math.round((route.total_duration || 0) / 60));
+
+    html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 '
+         + esc(route.summary || "")
+         + ' ' + modeLabel
+         + ' • ' + totalM + 'm'
+         + ' • ' + totalMin + ' min'
+         + '</div>';
+
+    route.steps.forEach(function (s, i) {
+        var fixedText = formatStepTextForMode(s, routingMode);
+
+        html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
+        html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
+        html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(fixedText)) + '</div></div>';
+    });
+
+    html += '<div style="display:flex;gap:6px;margin-top:8px">';
+    html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Step</button>';
+    html += '</div></div>';
+
+    div.innerHTML = html;
+    chatEl.appendChild(div);
+    scrollDown();
+
+    document.getElementById("rSpk").addEventListener("click", function () {
+        unlockSpeech();
+        speakCurrentStepIfNeeded(true);
+    });
+}
 
     function getIcon(t, m) {
         if (t === "depart") return "🚀";
