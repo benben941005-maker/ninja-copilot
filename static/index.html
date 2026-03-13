@@ -6,133 +6,58 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="#0D0D1A" />
   <title>Ninja Co-Pilot</title>
-
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-
   <style>
     *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
     body{margin:0;background:#0D0D1A;font-family:'DM Sans',sans-serif;overflow:hidden}
     input::placeholder{color:rgba(255,255,255,0.25)}
     ::-webkit-scrollbar{width:3px}
     ::-webkit-scrollbar-thumb{background:rgba(227,24,55,0.4);border-radius:2px}
-
-    #app{
-      height:100vh;height:100dvh;display:flex;flex-direction:column;
-      max-width:500px;margin:0 auto;background:#0D0D1A
-    }
-
-    .hdr{
-      padding:10px 14px;display:flex;align-items:center;justify-content:space-between;
-      border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0
-    }
+    #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:500px;margin:0 auto;background:#0D0D1A}
+    .hdr{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
     .hdr-l{display:flex;align-items:center;gap:8px}
-    .hdr-logo{
-      width:32px;height:32px;border-radius:8px;background:#E31837;
-      display:flex;align-items:center;justify-content:center;font-size:16px
-    }
+    .hdr-logo{width:32px;height:32px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:16px}
     .hdr-t{color:#fff;font-weight:700;font-size:13px}
     .hdr-t span{color:#E31837}
     .hdr-s{color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:1px}
-
     .top-actions{display:flex;gap:8px}
-    .mini-btn{
-      min-width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);
-      background:rgba(255,255,255,0.04);color:#fff;font-size:18px;cursor:pointer
-    }
+    .mini-btn{min-width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:18px;cursor:pointer}
     .mini-btn.on{background:rgba(76,175,80,0.18);border-color:rgba(76,175,80,0.5)}
-
-    .loc-bar{
-      padding:10px 14px;background:rgba(255,87,34,0.08);
-      border-bottom:1px solid rgba(255,87,34,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px
-    }
-    .loc-dot{
-      width:8px;height:8px;border-radius:50%;background:#FF5722;
-      box-shadow:0 0 6px #FF5722;animation:pulse 2s infinite;flex-shrink:0
-    }
+    .loc-bar{padding:10px 14px;background:rgba(255,87,34,0.08);border-bottom:1px solid rgba(255,87,34,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px}
+    .loc-dot{width:8px;height:8px;border-radius:50%;background:#FF5722;box-shadow:0 0 6px #FF5722;animation:pulse 2s infinite;flex-shrink:0}
     .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
     .loc-addr{color:#FF7A45;font-size:12px;font-weight:600}
     .loc-bar.good{background:rgba(76,175,80,0.08);border-color:rgba(76,175,80,0.15)}
     .loc-bar.good .loc-dot{background:#4CAF50;box-shadow:0 0 6px #4CAF50}
     .loc-bar.good .loc-addr{color:#fff}
-
     .chips{display:flex;gap:5px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
     .chips::-webkit-scrollbar{display:none}
-    .chip{
-      padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);
-      background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;
-      font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif
-    }
-
+    .chip{padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
     .chat{flex:1;overflow-y:auto;padding:10px 10px 6px}
     .mr{display:flex;margin-bottom:8px}
     .mr.u{justify-content:flex-end}
     .mr.a{justify-content:flex-start}
-
-    .av{
-      width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;
-      align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px
-    }
-
-    .bb{
-      max-width:82%;padding:10px 13px;color:#fff;font-size:13.5px;line-height:1.5;
-      white-space:pre-wrap;word-break:break-word
-    }
+    .av{width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px}
+    .bb{max-width:82%;padding:10px 13px;color:#fff;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
     .bb.u{background:#E31837;border-radius:14px 14px 4px 14px}
     .bb.a{background:rgba(255,255,255,0.07);border-radius:14px 14px 14px 4px}
-    .bb img{max-width:100%;border-radius:8px;margin-bottom:4px;display:block}
-
-    .map-card{
-      margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.2);
-      border-radius:14px;padding:12px
-    }
+    .map-card{margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.2);border-radius:14px;padding:12px}
     .map-title{font-size:12px;color:#4CAF50;font-weight:700;margin-bottom:8px}
     .map-actions{display:flex;gap:8px;margin-top:10px}
-    .map-actions button{
-      flex:1;padding:10px;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer
-    }
+    .map-actions button{flex:1;padding:10px;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer}
     .gm{background:#4285F4;color:#fff}
-    .ap{background:#111;color:#fff;border:1px solid rgba(255,255,255,0.12)!important}
-
-    .proc{
-      color:rgba(255,255,255,0.3);font-size:12px;font-style:italic;
-      padding:8px 12px;border-radius:12px;margin-bottom:8px
-    }
-
-    .ios-tip{
-      background:rgba(255,152,0,0.1);border:1px solid rgba(255,152,0,0.3);
-      border-radius:10px;padding:10px 12px;margin:6px 0;font-size:12px;color:#FFB74D;line-height:1.5
-    }
-
-    .sb{
-      padding:5px 14px;display:none;align-items:center;justify-content:space-between;
-      background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)
-    }
+    .ap{background:#111;color:#fff;border:1px solid rgba(255,255,255,0.12)}
+    .proc{color:rgba(255,255,255,0.3);font-size:12px;padding:6px 40px}
+    .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
     .sb span{color:#E31837;font-size:11px;font-weight:600}
-    .sb button{
-      padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;
-      color:#E31837;font-size:11px;font-weight:600;cursor:pointer
-    }
-
-    .ib{
-      padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);
-      background:rgba(0,0,0,0.3);flex-shrink:0
-    }
+    .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
+    .ib{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);flex-shrink:0}
     .ir{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-    .ir input{
-      flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);
-      background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif
-    }
-    .snd{
-      width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,0.06);
-      color:#fff;font-size:14px;cursor:pointer;flex-shrink:0
-    }
+    .ir input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
+    .snd{width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,0.06);color:#fff;font-size:14px;cursor:pointer;flex-shrink:0}
     .snd.on{background:#E31837}
-
     .ar{display:flex;gap:6px}
-    .ar button{
-      flex:1;padding:12px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;
-      display:flex;flex-direction:column;align-items:center;gap:2px
-    }
+    .ar button{flex:1;padding:12px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:2px}
     .ar button span:first-child{font-size:18px}
     .ar button span:last-child{font-size:9px;font-weight:600}
     .vb{background:#E31837;color:#fff;flex:2!important;flex-direction:row!important;gap:8px!important;justify-content:center}
@@ -141,14 +66,11 @@
     .plb{background:rgba(255,255,255,0.06);color:#fff}
     .nvb{background:rgba(76,175,80,0.16);color:#4CAF50}
     .lvb{background:rgba(33,150,243,0.15);color:#2196F3}
-
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
   </style>
 </head>
 <body>
 <div id="app">
-
-  <!-- HEADER -->
   <div class="hdr">
     <div class="hdr-l">
       <div class="hdr-logo">🥷</div>
@@ -162,7 +84,6 @@
     </div>
   </div>
 
-  <!-- LOCATION BAR -->
   <div class="loc-bar" id="locBar">
     <div class="loc-dot"></div>
     <div>
@@ -171,19 +92,14 @@
     </div>
   </div>
 
-  <!-- QUICK CHIPS -->
   <div class="chips" id="chips"></div>
-
-  <!-- CHAT -->
   <div class="chat" id="chat"></div>
 
-  <!-- SPEAKING BAR -->
   <div class="sb" id="sb">
     <span>🔊 Speaking...</span>
     <button id="stopBtn">Stop</button>
   </div>
 
-  <!-- INPUT BAR -->
   <div class="ib">
     <div class="ir">
       <input type="text" id="inp" placeholder="Type or speak in any language...">
@@ -193,46 +109,36 @@
       <button class="vb" id="voiceBtn"><span>🎙️</span><span>TAP TO SPEAK</span></button>
       <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
       <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
-      <button class="nvb" id="mapBtn"><span>🗺️</span><span>MAP</span></button>
+      <button class="nvb" id="mapBtn"><span>🗺️</span><span>NAV</span></button>
       <button class="lvb" id="liveBtn"><span>📡</span><span>LIVE</span></button>
     </div>
   </div>
-
 </div>
-
-<!-- HIDDEN FILE INPUTS -->
-<input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none">
-<input type="file" id="photoInput" accept="image/*" style="display:none">
 
 <script>
 (function () {
   "use strict";
 
-  // ── DOM refs ──────────────────────────────────────────────
-  const chatEl   = document.getElementById("chat");
-  const inp      = document.getElementById("inp");
-  const sendBtn  = document.getElementById("sendBtn");
-  const voiceBtn = document.getElementById("voiceBtn");
-  const mapBtn   = document.getElementById("mapBtn");
-  const liveBtn  = document.getElementById("liveBtn");
-  const stopBtn  = document.getElementById("stopBtn");
-  const gpsBtn   = document.getElementById("gpsBtn");
-  const locBar   = document.getElementById("locBar");
-  const locAddr  = document.getElementById("locAddr");
-  const sb       = document.getElementById("sb");
-  const chipsEl  = document.getElementById("chips");
-  const scanInput  = document.getElementById("scanInput");
-  const photoInput = document.getElementById("photoInput");
+  const chatEl  = document.getElementById("chat");
+  const inp     = document.getElementById("inp");
+  const sendBtn = document.getElementById("sendBtn");
+  const voiceBtn= document.getElementById("voiceBtn");
+  const mapBtn  = document.getElementById("mapBtn");
+  const liveBtn = document.getElementById("liveBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const gpsBtn  = document.getElementById("gpsBtn");
+  const locBar  = document.getElementById("locBar");
+  const locAddr = document.getElementById("locAddr");
+  const sb      = document.getElementById("sb");
+  const chipsEl = document.getElementById("chips");
 
-  // ── State ─────────────────────────────────────────────────
-  let gpsPos         = null;
+  let gpsPos = null;
   let currentAddress = "";
-  let gpsWatchId     = null;
-  let recognition    = null;
+  let gpsWatchId = null;
+  let recognition = null;
   let lastDestAddress = "";
-  let liveTracking   = true;
+  let liveTracking = true;
 
-  // ── Quick chips ───────────────────────────────────────────
   const CHIPS = [
     "Where am I?",
     "Go to IMM",
@@ -249,25 +155,20 @@
     chipsEl.appendChild(b);
   });
 
-  // ── Helpers ───────────────────────────────────────────────
   function esc(s) {
     const d = document.createElement("div");
     d.textContent = s;
     return d.innerHTML;
   }
 
-  function scrollDown() {
-    chatEl.scrollTop = chatEl.scrollHeight;
-  }
+  function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
 
-  function addBubble(role, text, imgSrc) {
+  function addBubble(role, text) {
     const row = document.createElement("div");
     row.className = "mr " + (role === "user" ? "u" : "a");
     let html = "";
     if (role === "assistant") html += '<div class="av">🥷</div>';
-    html += '<div class="bb ' + (role === "user" ? "u" : "a") + '">';
-    if (imgSrc) html += `<img src="${imgSrc}" alt="">`;
-    html += esc(text) + "</div>";
+    html += '<div class="bb ' + (role === "user" ? "u" : "a") + '">' + esc(text) + '</div>';
     row.innerHTML = html;
     chatEl.appendChild(row);
     scrollDown();
@@ -304,9 +205,9 @@
       const u = new SpeechSynthesisUtterance(text);
       u.rate = 1.0;
       u.pitch = 1.0;
-      u.onstart = () => (sb.style.display = "flex");
-      u.onend   = () => (sb.style.display = "none");
-      u.onerror = () => (sb.style.display = "none");
+      u.onstart = () => sb.style.display = "flex";
+      u.onend   = () => sb.style.display = "none";
+      u.onerror = () => sb.style.display = "none";
       window.speechSynthesis.speak(u);
     } catch (_) {}
   }
@@ -316,80 +217,75 @@
     sb.style.display = "none";
   };
 
-  // ── Reverse geocode ───────────────────────────────────────
   async function reverseGeocode(lat, lng) {
     try {
-      const r = await fetch(`/api/geocode?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`);
+      const r = await fetch("/api/geocode?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng));
       const d = await r.json();
       if (d && d.address) {
         currentAddress = d.address;
         setLocState("good", d.address);
       } else {
-        setLocState("bad", `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        setLocState("bad", lat.toFixed(5) + ", " + lng.toFixed(5));
       }
     } catch (_) {
-      setLocState("bad", `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      setLocState("bad", lat.toFixed(5) + ", " + lng.toFixed(5));
     }
   }
 
-  // ── iOS detection ─────────────────────────────────────────
+  // =========================================================
+  // iOS GPS FIX
+  // =========================================================
   function isIOS() {
     return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
   }
 
-  // ── GPS error messages ────────────────────────────────────
   function geolocationErrorMessage(err) {
     if (!window.isSecureContext) {
-      return "GPS blocked: site is not secure (HTTPS required).";
+      return "GPS blocked: site is not secure HTTPS.";
     }
     if (!err) return "Unable to detect location.";
-
     switch (err.code) {
       case 1:
         if (isIOS()) {
-          return "GPS blocked on iOS.\n\nGo to:\nSettings → Chrome (or Safari) → Location → Allow\n\nThen tap 📍 to retry.";
+          return "GPS blocked. Go to: Settings \u2192 Chrome (or Safari) \u2192 Location \u2192 While Using the App.";
         }
-        return "Location blocked. Allow GPS in browser site settings, then tap 📍.";
+        return "Location blocked. Allow GPS in browser settings and retry.";
       case 2:
-        return "Location unavailable. Move to open sky and tap 📍 to retry.";
+        return "Location unavailable. Move to open sky and retry.";
       case 3:
-        return "GPS timeout. Tap 📍 to retry.";
+        return "GPS timeout. Tap \uD83D\uDCCD to retry.";
       default:
-        return "Unable to detect location. Tap 📍 to retry.";
+        return "Unable to detect location. Tap \uD83D\uDCCD to retry.";
     }
   }
 
-  // ── Permission check + GPS start ─────────────────────────
   async function checkPermissionAndStart() {
     if (!("geolocation" in navigator)) {
       setLocState("bad", "GPS not supported on this phone.");
       addBubble("assistant", "This phone/browser does not support GPS.");
       return;
     }
-
     if (!window.isSecureContext) {
       setLocState("bad", "HTTPS required for GPS.");
       addBubble("assistant", "Open the app with HTTPS. GPS will not work on insecure pages.");
       return;
     }
-
-    // Check permission state if API is available (Chrome Android / Safari 16+)
+    // Check permission state if available (Chrome Android, Safari 16+)
     if (navigator.permissions && navigator.permissions.query) {
       try {
         const perm = await navigator.permissions.query({ name: "geolocation" });
         if (perm.state === "denied") {
           const msg = isIOS()
-            ? "GPS denied.\n\nGo to:\nSettings → Chrome (or Safari) → Location → Allow\n\nThen tap 📍 to retry."
-            : "GPS denied. Enable location in browser site settings, then tap 📍.";
-          setLocState("bad", isIOS() ? "GPS denied — see Settings" : "GPS denied");
+            ? "GPS denied. Go to: Settings \u2192 Chrome \u2192 Location \u2192 While Using the App."
+            : "GPS denied. Enable location in browser site settings.";
+          setLocState("bad", msg);
           addBubble("assistant", msg);
           return;
         }
       } catch (_) {
-        // permissions.query not supported — continue anyway
+        // permissions.query not supported — continue
       }
     }
-
     setLocState("bad", "Locating...");
     startGPS();
   }
@@ -400,35 +296,27 @@
       gpsWatchId = null;
     }
 
-    // Single fast fix first
+    // Fast single fix first
     navigator.geolocation.getCurrentPosition(
       async function (pos) {
-        gpsPos = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          acc: pos.coords.accuracy
-        };
+        gpsPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
         gpsBtn.classList.add("on");
         await reverseGeocode(gpsPos.lat, gpsPos.lng);
       },
       function (err) {
         gpsBtn.classList.remove("on");
         const msg = geolocationErrorMessage(err);
-        setLocState("bad", err.code === 1 ? (isIOS() ? "GPS denied — see Settings" : "GPS denied") : "GPS unavailable");
+        setLocState("bad", msg);
         addBubble("assistant", msg);
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
 
-    // Continuous watch for live updates
+    // Continuous live watch
     gpsWatchId = navigator.geolocation.watchPosition(
       async function (pos) {
         if (!liveTracking) return;
-        gpsPos = {
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          acc: pos.coords.accuracy
-        };
+        gpsPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
         gpsBtn.classList.add("on");
         await reverseGeocode(gpsPos.lat, gpsPos.lng);
       },
@@ -440,86 +328,67 @@
     );
   }
 
-  // ── Map helpers ───────────────────────────────────────────
   async function openGoogleMapTo(destAddress) {
     if (!destAddress) return;
     const url = gpsPos
-      ? `https://www.google.com/maps/dir/${gpsPos.lat},${gpsPos.lng}/${encodeURIComponent(destAddress)}`
-      : `https://www.google.com/maps/search/${encodeURIComponent(destAddress)}`;
+      ? "https://www.google.com/maps/dir/" + gpsPos.lat + "," + gpsPos.lng + "/" + encodeURIComponent(destAddress)
+      : "https://www.google.com/maps/search/" + encodeURIComponent(destAddress);
     window.open(url, "_blank");
   }
 
   function showMapCard(destAddress) {
     const wrap = document.createElement("div");
     wrap.className = "mr a";
-
-    const embedSrc = gpsPos
-      ? `https://www.google.com/maps?saddr=${gpsPos.lat},${gpsPos.lng}&daddr=${encodeURIComponent(destAddress)}&output=embed`
-      : `https://www.google.com/maps?q=${encodeURIComponent(destAddress)}&z=15&output=embed`;
-
-    wrap.innerHTML = `
-      <div class="av">🥷</div>
-      <div class="bb a" style="padding:0;background:transparent;max-width:88%">
-        <div class="map-card">
-          <div class="map-title">Route to: ${esc(destAddress)}</div>
-          <div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)">
-            <iframe
-              src="${embedSrc}"
-              width="100%" height="180"
-              style="border:0;display:block"
-              loading="lazy" allowfullscreen>
-            </iframe>
-          </div>
-          <div class="map-actions">
-            <button class="gm" id="gmBtnTmp">Open Google Maps</button>
-            <button class="ap" id="apBtnTmp">Apple / Browser Map</button>
-          </div>
-        </div>
-      </div>`;
-
+    const source = gpsPos
+      ? "https://www.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng + "&daddr=" + encodeURIComponent(destAddress) + "&output=embed"
+      : "https://www.google.com/maps?q=" + encodeURIComponent(destAddress) + "&z=15&output=embed";
+    wrap.innerHTML =
+      '<div class="av">\uD83E\uDD77</div>' +
+      '<div class="bb a" style="padding:0;background:transparent;max-width:88%">' +
+        '<div class="map-card">' +
+          '<div class="map-title">Route to: ' + esc(destAddress) + '</div>' +
+          '<div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)">' +
+            '<iframe src="' + source + '" width="100%" height="180" style="border:0;display:block" loading="lazy" allowfullscreen></iframe>' +
+          '</div>' +
+          '<div class="map-actions">' +
+            '<button class="gm gm-temp">Open Google Maps</button>' +
+            '<button class="ap ap-temp">Use Apple Maps</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
     chatEl.appendChild(wrap);
     scrollDown();
-
-    wrap.querySelector("#gmBtnTmp").onclick = () => openGoogleMapTo(destAddress);
-    wrap.querySelector("#apBtnTmp").onclick = () => {
-      window.open(`http://maps.apple.com/?daddr=${encodeURIComponent(destAddress)}`, "_blank");
-    };
+    wrap.querySelector(".gm-temp").onclick = () => openGoogleMapTo(destAddress);
+    wrap.querySelector(".ap-temp").onclick = () => window.open("http://maps.apple.com/?daddr=" + encodeURIComponent(destAddress), "_blank");
   }
 
-  // ── Chat send ─────────────────────────────────────────────
   async function sendText(textArg) {
     const text = (textArg || inp.value || "").trim();
     if (!text) return;
-
     addBubble("user", text);
     inp.value = "";
     sendBtn.classList.remove("on");
     showProc();
-
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          lat:     gpsPos ? gpsPos.lat : null,
-          lng:     gpsPos ? gpsPos.lng : null,
+          lat: gpsPos ? gpsPos.lat : null,
+          lng: gpsPos ? gpsPos.lng : null,
           address: currentAddress
         })
       });
-
       const data = await res.json();
       hideProc();
-
       const reply = data.reply || "Something went wrong.";
       addBubble("assistant", reply);
       speak(reply);
-
       if (data.dest_address) {
         lastDestAddress = data.dest_address;
         showMapCard(lastDestAddress);
       }
-
       if (data.show_my_location && currentAddress) {
         addBubble("assistant", "Current location: " + currentAddress);
       }
@@ -529,165 +398,108 @@
     }
   }
 
-  // ── Image compression ─────────────────────────────────────
-  function compressImage(file, maxKB, callback) {
-    const reader = new FileReader();
-    reader.onload = function (e) {
-      const img = new Image();
-      img.onload = function () {
-        let w = img.width, h = img.height;
-        const MAX_DIM = 1200;
-        if (w > MAX_DIM || h > MAX_DIM) {
-          const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-          w = Math.round(w * ratio);
-          h = Math.round(h * ratio);
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = w; canvas.height = h;
-        canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-        let quality = 0.85;
-        let base64 = canvas.toDataURL("image/jpeg", quality);
-        while (base64.length > maxKB * 1024 * 1.37 && quality > 0.3) {
-          quality -= 0.1;
-          base64 = canvas.toDataURL("image/jpeg", quality);
-        }
-        callback(null, {
-          base64: base64.split(",")[1],
-          preview: base64,
-          w, h,
-          kb: Math.round(base64.length * 0.75 / 1024)
-        });
-      };
-      img.onerror = () => callback("Image load failed");
-      img.src = e.target.result;
-    };
-    reader.onerror = () => callback("File read failed");
-    reader.readAsDataURL(file);
-  }
+  // ── Always-on mic toggle ──────────────────────────────────
+  let micActive   = false;
+  let isListening = false;
+  let isBusy      = false;
 
-  // ── Scan handler ──────────────────────────────────────────
-  async function handleScan(file) {
-    if (!file) return;
-    showProc();
-    compressImage(file, 3500, async function (err, img) {
-      if (err) { hideProc(); addBubble("assistant", "Image error: " + err); return; }
-      addBubble("user", "📷 Scanning label...", img.preview);
-      try {
-        const res = await fetch("/api/scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: img.base64 })
-        });
-        const data = await res.json();
-        hideProc();
-        const reply = data.reply || "Could not read label.";
-
-        // Try to parse JSON from reply
-        let parsed = null;
-        try { parsed = JSON.parse(reply.replace(/```json|```/g, "").trim()); } catch (_) {}
-
-        if (parsed && parsed.address) {
-          const addr = parsed.address + (parsed.postal ? " Singapore " + parsed.postal : "");
-          addBubble("assistant",
-            "📦 Address: " + addr +
-            (parsed.unit      ? "\n🚪 Unit: " + parsed.unit      : "") +
-            (parsed.recipient ? "\n👤 " + parsed.recipient        : "") +
-            (parsed.phone     ? "\n📞 " + parsed.phone            : "")
-          );
-          speak("Address detected. Starting navigation.");
-          lastDestAddress = addr;
-          showMapCard(addr);
-        } else {
-          addBubble("assistant", reply);
-          speak(reply);
-        }
-      } catch (_) {
-        hideProc();
-        addBubble("assistant", "Scan failed. Try again.");
-      }
-    });
-  }
-
-  // ── Photo handler ─────────────────────────────────────────
-  async function handlePhoto(file) {
-    if (!file) return;
-    showProc();
-    compressImage(file, 3500, async function (err, img) {
-      if (err) { hideProc(); addBubble("assistant", "Image error: " + err); return; }
-      addBubble("user", "🖼️ Analyzing photo...", img.preview);
-      try {
-        const res = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: "Analyze this delivery scene or address photo.",
-            image: img.base64,
-            lat:     gpsPos ? gpsPos.lat : null,
-            lng:     gpsPos ? gpsPos.lng : null,
-            address: currentAddress
-          })
-        });
-        const data = await res.json();
-        hideProc();
-        const reply = data.reply || "Cannot analyze photo.";
-        addBubble("assistant", reply);
-        speak(reply);
-      } catch (_) {
-        hideProc();
-        addBubble("assistant", "Photo analysis failed.");
-      }
-    });
-  }
-
-  // ── Voice input ───────────────────────────────────────────
-  function startVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      addBubble("assistant", "Voice input not supported in this browser. Please type.");
-      return;
+  function setVoiceBtnState(on) {
+    if (on) {
+      voiceBtn.style.background = "#ff3355";
+      voiceBtn.style.boxShadow  = "0 0 0 4px rgba(255,51,85,0.35)";
+      voiceBtn.querySelector("span:last-child").textContent = "🔴 MIC ON";
+    } else {
+      voiceBtn.style.background = "#E31837";
+      voiceBtn.style.boxShadow  = "none";
+      voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
     }
-    if (recognition) { try { recognition.stop(); } catch (_) {} }
+  }
+
+  function startSR() {
+    if (!micActive || isListening || isBusy) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { addBubble("assistant", "Voice not supported. Please type."); return; }
 
     recognition = new SR();
     recognition.lang = "en-SG";
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
-    voiceBtn.style.opacity = "0.7";
 
     recognition.onresult = function (e) {
-      const text = e.results[0][0].transcript;
-      voiceBtn.style.opacity = "1";
-      sendText(text);
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          const text = e.results[i][0].transcript.trim();
+          if (text) sendText(text);
+        }
+      }
     };
-    recognition.onerror = function () {
-      voiceBtn.style.opacity = "1";
-      addBubble("assistant", "Mic not available. Please allow microphone permission.");
+
+    recognition.onerror = function (e) {
+      isListening = false;
+      // Restart on non-fatal errors (no-speech, audio-capture)
+      if (micActive && e.error !== "not-allowed") {
+        setTimeout(function () { if (micActive && !isListening) startSR(); }, 800);
+      } else if (e.error === "not-allowed") {
+        stopMic();
+        addBubble("assistant", "Mic blocked. Allow microphone permission.");
+      }
     };
-    recognition.onend = function () { voiceBtn.style.opacity = "1"; };
-    try { recognition.start(); } catch (_) { voiceBtn.style.opacity = "1"; }
+
+    recognition.onend = function () {
+      isListening = false;
+      // Auto-restart after reply finishes
+      if (micActive && !isBusy) {
+        setTimeout(function () { if (micActive && !isListening) startSR(); }, 400);
+      }
+    };
+
+    try { recognition.start(); isListening = true; }
+    catch (_) { setTimeout(function () { if (micActive) startSR(); }, 600); }
   }
 
-  // ── Button wiring ─────────────────────────────────────────
-  sendBtn.onclick = () => sendText();
-  inp.addEventListener("input", () => {
-    sendBtn.classList.toggle("on", !!inp.value.trim());
-  });
-  inp.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") sendText();
-  });
+  function stopMic() {
+    micActive   = false;
+    isListening = false;
+    if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
+    setVoiceBtnState(false);
+  }
 
-  voiceBtn.onclick = startVoice;
+  function toggleMic() {
+    if (micActive) { stopMic(); return; }
+    micActive = true;
+    setVoiceBtnState(true);
+    startSR();
+  }
+
+  // Pause mic while AI is replying, resume after
+  const _origSpeak = speak;
+  speak = function(text) {
+    isBusy = true;
+    if (recognition) { try { recognition.stop(); } catch (_) {} isListening = false; }
+    _origSpeak(text);
+    // Resume mic after estimated speech duration
+    const ms = Math.max(1500, text.length * 60);
+    setTimeout(function () {
+      isBusy = false;
+      if (micActive && !isListening) startSR();
+    }, ms);
+  };
+
+  sendBtn.onclick = () => sendText();
+  inp.addEventListener("input", () => { sendBtn.classList.toggle("on", !!inp.value.trim()); });
+  inp.addEventListener("keydown", function (e) { if (e.key === "Enter") sendText(); });
+  voiceBtn.onclick = toggleMic;
 
   mapBtn.onclick = function () {
     if (lastDestAddress) { showMapCard(lastDestAddress); return; }
     if (currentAddress) {
       addBubble("assistant", "You are near " + currentAddress);
       const url = gpsPos
-        ? `https://www.google.com/maps?q=${gpsPos.lat},${gpsPos.lng}`
-        : `https://www.google.com/maps/search/${encodeURIComponent(currentAddress)}`;
+        ? "https://www.google.com/maps?q=" + gpsPos.lat + "," + gpsPos.lng
+        : "https://www.google.com/maps/search/" + encodeURIComponent(currentAddress);
       window.open(url, "_blank");
     } else {
-      addBubble("assistant", "GPS not ready yet. Tap 📍 to retry.");
+      addBubble("assistant", "GPS not ready yet. Tap \uD83D\uDCCD to retry.");
     }
   };
 
@@ -703,30 +515,14 @@
   };
 
   document.getElementById("scanBtn").onclick = function () {
-    scanInput.click();
-  };
-  scanInput.onchange = function () {
-    if (scanInput.files && scanInput.files[0]) {
-      handleScan(scanInput.files[0]);
-      scanInput.value = "";
-    }
+    addBubble("assistant", "Scan ready. Point camera at parcel label.");
   };
 
   document.getElementById("photoBtn").onclick = function () {
-    photoInput.click();
-  };
-  photoInput.onchange = function () {
-    if (photoInput.files && photoInput.files[0]) {
-      handlePhoto(photoInput.files[0]);
-      photoInput.value = "";
-    }
+    addBubble("assistant", "Photo ready. Take a photo of the building or address.");
   };
 
-  // ── Boot ──────────────────────────────────────────────────
-  addBubble(
-    "assistant",
-    "Ready. Locking your GPS now.\nIf stuck, tap 📍 and allow location permission."
-  );
+  addBubble("assistant", "Ready. Locking GPS now.\nIf location stays stuck, tap \uD83D\uDCCD and allow location permission in browser.");
   checkPermissionAndStart();
 
 })();
