@@ -272,29 +272,48 @@ def address_to_latlng():
             return jsonify({"error": "Missing address"}), 400
 
         # Google Places if enabled
+                # Google Places API (New)
         if use_places and GOOGLE_PLACES_API_KEY:
             try:
-                params = {
-                    "input": address,
-                    "inputtype": "textquery",
-                    "fields": "geometry,name,formatted_address",
-                    "key": GOOGLE_PLACES_API_KEY,
-                    "locationbias": f"circle:5000@{user_lat},{user_lng}" if user_lat and user_lng else ""
+                headers = {
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+                    "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location"
                 }
-                resp = requests.get("https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
-                                    params=params, timeout=8)
+
+                body = {
+                    "textQuery": address
+                }
+
+                if user_lat and user_lng:
+                    body["locationBias"] = {
+                        "circle": {
+                            "center": {
+                                "latitude": float(user_lat),
+                                "longitude": float(user_lng)
+                            },
+                            "radius": 5000.0
+                        }
+                    }
+
+                resp = requests.post(
+                    "https://places.googleapis.com/v1/places:searchText",
+                    headers=headers,
+                    json=body,
+                    timeout=8
+                )
                 data = resp.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    c = candidates[0]
-                    loc = c.get("geometry", {}).get("location", {})
-                    if loc.get("lat"):
-                        return jsonify({
-                            "lat": loc["lat"], "lng": loc["lng"],
-                            "display": c.get("formatted_address", address),
-                            "place_name": c.get("name", address),
-                            "source": "google"
-                        })
+                places = data.get("places", [])
+                if places:
+                    p = places[0]
+                    loc = p.get("location", {})
+                    return jsonify({
+                        "lat": loc.get("latitude"),
+                        "lng": loc.get("longitude"),
+                        "display": p.get("formattedAddress", address),
+                        "place_name": p.get("displayName", {}).get("text", address),
+                        "source": "google_new"
+                    })
             except Exception:
                 pass
 
