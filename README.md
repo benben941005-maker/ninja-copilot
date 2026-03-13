@@ -1,79 +1,214 @@
-# Ninja Co-Pilot — AI Driver Assistant
 
-## Project Structure
-```
-ninja-copilot/
-├── static/
-│   ├── index.html          ← Frontend UI
-│   └── ai-driver-copilot.js ← Vanilla JS (no React needed)
-├── main.py                  ← Flask backend (proxies API calls)
-├── Dockerfile               ← Cloud Run deployment
-├── requirements.txt         ← Python dependencies
-└── README.md
-```
+# Ninja Van AI Driver Copilot 🚚🤖
 
-## Features
-- **Image auto-compression**: Resizes + compresses to under 4MB (fixes 5MB API limit error)
-- **Auto language detection**: No language selector needed — AI detects English, Chinese, Malay, Tamil, Thai, Vietnamese, etc.
-- **Short structured replies**: Max 60 words, no slang, professional bullet-point format
-- **Voice input**: Tap to speak in any language (browser auto-detects)
-- **Voice output**: AI reads responses and navigation steps aloud
-- **GPS tracking**: Shows live GPS status
-- **Map + turn-by-turn nav**: Google Maps embed + step-by-step voice directions
-- **Smart POI search**: Google Places API for real business locations (nearest Haidilao, petrol station, etc.), OneMap.sg fallback for Singapore addresses
-- **Street recognition**: Take a photo of road signs/buildings to identify your location
-- **Dual API support**: Works with Claude API or OpenAI GPT-4o
+AI-powered delivery assistant designed for **Ninja Van drivers**.  
+This project demonstrates how artificial intelligence can assist drivers with navigation, parcel scanning, voice commands, and smart routing.
 
-## Deploy to Cloud Run
+Built as an **NTU Data Science & AI Capstone Project**.
 
-### 1. Set environment variables
-```bash
-# Use Claude (default)
-export ANTHROPIC_API_KEY="sk-ant-..."
-export AI_PROVIDER="claude"
+---
 
-# Optional: Google Places API for accurate POI search (recommended)
-export GOOGLE_PLACES_API_KEY="AIza..."
+# Project Vision
 
-# Optional: Weather alerts
-export WEATHER_API_KEY="..."
+Create a **Tesla‑style AI copilot for delivery drivers** that helps them:
 
-# OR use OpenAI
-export OPENAI_API_KEY="sk-..."
-export AI_PROVIDER="openai"
-```
+• Navigate faster  
+• Reduce delivery time  
+• Automate parcel handling  
+• Communicate with customers automatically  
 
-### 2. Build and deploy
-```bash
-gcloud builds submit --tag gcr.io/YOUR_PROJECT/ninja-copilot
-gcloud run deploy ninja-copilot \
-  --image gcr.io/YOUR_PROJECT/ninja-copilot \
-  --platform managed \
-  --region asia-southeast1 \
-  --allow-unauthenticated \
-  --set-env-vars "ANTHROPIC_API_KEY=sk-ant-...,AI_PROVIDER=claude"
-```
+The goal is to improve **last‑mile logistics efficiency** using AI.
 
-### 3. Test locally
-```bash
+---
+
+# Core Features
+
+## 📍 GPS Driver Navigation
+- Detects driver location automatically
+- Calculates optimal route to destination
+- Turn‑by‑turn navigation instructions
+
+## 🎤 Always‑On Voice Assistant
+Hands‑free driver interaction.
+
+Example commands:
+- “Navigate to Jurong Point”
+- “Nearest toilet”
+- “Nearest petrol station”
+
+## 🧠 AI Navigation Assistant
+Uses LLM to give short actionable instructions like:
+
+START DRIVE  
+TURN LEFT  
+GO STRAIGHT 300M
+
+## 📦 Parcel Label OCR
+Driver can scan parcel labels using camera.
+
+AI extracts:
+- Address
+- Postal code
+- Recipient
+- Phone number
+
+## 📷 Street Recognition (AI Vision)
+Driver can point camera at buildings to detect:
+- street names
+- building numbers
+- nearby landmarks
+
+## ☔ Weather Awareness
+Detects rain conditions and can warn driver about delays.
+
+## 💬 Customer ETA Messaging
+When driver is **5 minutes away**, system can automatically notify customer via WhatsApp.
+
+## 🚀 Smart Route Planning
+Future version includes:
+
+- multi‑parcel route optimization
+- delivery clustering
+- ETA prediction
+
+---
+
+# System Architecture
+
+Driver Phone  
+↓  
+Web App (HTML + JS)  
+↓  
+Flask Backend (Python)  
+↓  
+AI APIs
+
+Services used:
+
+• OpenAI / Claude (AI assistant)  
+• OneMap.sg (Singapore geocoding)  
+• OSRM (routing engine)  
+• WeatherAPI (weather detection)
+
+---
+
+# Tech Stack
+
+Frontend
+- HTML
+- JavaScript
+- Web Speech API
+- Camera API
+
+Backend
+- Python
+- Flask
+
+AI
+- OpenAI GPT‑4o
+- Claude Sonnet
+
+Maps
+- OneMap.sg
+- OpenStreetMap
+- OSRM
+
+Deployment
+- Docker
+- Google Cloud Run
+- GitHub Actions CI/CD
+
+---
+
+# Deployment Architecture
+
+GitHub Repository  
+↓  
+GitHub Actions CI/CD  
+↓  
+Docker Build  
+↓  
+Google Cloud Run  
+↓  
+Public Web App
+
+---
+
+# How To Run Locally
+
+Install dependencies
+
 pip install -r requirements.txt
-ANTHROPIC_API_KEY="your-key" python main.py
-# Open http://localhost:8080
-```
 
-## API Endpoints
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Serves index.html |
-| `/api/chat` | POST | Text chat with AI |
-| `/api/scan` | POST | Image OCR + address extraction |
-| `/api/poi-search` | GET | POI/business search (Google Places → Nominatim fallback) |
-| `/api/address-to-latlng` | GET | Forward geocode (OneMap → Nominatim fallback) |
-| `/api/route` | GET | Turn-by-turn directions via OSRM |
-| `/api/weather` | GET | Weather check at destination |
-| `/api/geocode` | GET | Reverse geocode GPS to address |
+Run server
 
-## Switching between Claude and OpenAI
-Set the `AI_PROVIDER` environment variable:
-- `claude` → Uses Claude Sonnet (default)
-- `openai` → Uses GPT-4o (requires `OPENAI_API_KEY`)
+python main.py
+
+Open browser
+
+http://localhost:8080
+
+---
+
+# Environment Variables
+
+These are configured using **GitHub Secrets** for deployment.
+
+ANTHROPIC_API_KEY  
+OPENAI_API_KEY  
+GOOGLE_PLACES_API_KEY  
+ONEMAP_EMAIL  
+ONEMAP_PASSWORD  
+WEATHER_API_KEY
+
+---
+
+# Example Driver Workflow
+
+1️⃣ Driver opens AI Copilot on phone
+
+2️⃣ GPS detects driver location
+
+3️⃣ Driver says:
+“Navigate to IMM Mall”
+
+4️⃣ AI finds nearest IMM
+
+5️⃣ Turn‑by‑turn navigation starts
+
+6️⃣ Driver scans parcel label
+
+7️⃣ AI extracts delivery address
+
+8️⃣ Customer receives ETA notification
+
+---
+
+# Future Improvements
+
+• Driver fatigue detection  
+• Traffic prediction AI  
+• Delivery time forecasting  
+• Parcel sorting automation  
+• Warehouse AI integration
+
+---
+
+# Capstone Project Goal
+
+Demonstrate how **AI can transform last‑mile logistics** by assisting delivery drivers with:
+
+navigation  
+parcel processing  
+customer communication  
+
+This system shows a **prototype AI copilot for logistics companies like Ninja Van**.
+
+---
+
+# Author
+
+NTU Data Science & AI Student
+
+Capstone Project:  
+**AI Driver Copilot for Logistics**
