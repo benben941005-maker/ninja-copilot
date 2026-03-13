@@ -273,6 +273,7 @@ def address_to_latlng():
 
         # Google Places if enabled
                 # Google Places API (New)
+                # Google Places API (New)
         if use_places and GOOGLE_PLACES_API_KEY:
             try:
                 headers = {
