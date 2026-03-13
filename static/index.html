@@ -3,529 +3,451 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0b0f" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#0D0D1A" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Ninja Co-Pilot</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
   <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-    body{margin:0;background:#0D0D1A;font-family:'DM Sans',sans-serif;overflow:hidden}
-    input::placeholder{color:rgba(255,255,255,0.25)}
-    ::-webkit-scrollbar{width:3px}
-    ::-webkit-scrollbar-thumb{background:rgba(227,24,55,0.4);border-radius:2px}
-    #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:500px;margin:0 auto;background:#0D0D1A}
-    .hdr{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
-    .hdr-l{display:flex;align-items:center;gap:8px}
-    .hdr-logo{width:32px;height:32px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:16px}
-    .hdr-t{color:#fff;font-weight:700;font-size:13px}
-    .hdr-t span{color:#E31837}
-    .hdr-s{color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:1px}
-    .top-actions{display:flex;gap:8px}
-    .mini-btn{min-width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:18px;cursor:pointer}
-    .mini-btn.on{background:rgba(76,175,80,0.18);border-color:rgba(76,175,80,0.5)}
-    .loc-bar{padding:10px 14px;background:rgba(255,87,34,0.08);border-bottom:1px solid rgba(255,87,34,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px}
-    .loc-dot{width:8px;height:8px;border-radius:50%;background:#FF5722;box-shadow:0 0 6px #FF5722;animation:pulse 2s infinite;flex-shrink:0}
-    .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
-    .loc-addr{color:#FF7A45;font-size:12px;font-weight:600}
-    .loc-bar.good{background:rgba(76,175,80,0.08);border-color:rgba(76,175,80,0.15)}
-    .loc-bar.good .loc-dot{background:#4CAF50;box-shadow:0 0 6px #4CAF50}
-    .loc-bar.good .loc-addr{color:#fff}
-    .chips{display:flex;gap:5px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
-    .chips::-webkit-scrollbar{display:none}
-    .chip{padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
-    .chat{flex:1;overflow-y:auto;padding:10px 10px 6px}
-    .mr{display:flex;margin-bottom:8px}
-    .mr.u{justify-content:flex-end}
-    .mr.a{justify-content:flex-start}
-    .av{width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px}
-    .bb{max-width:82%;padding:10px 13px;color:#fff;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-    .bb.u{background:#E31837;border-radius:14px 14px 4px 14px}
-    .bb.a{background:rgba(255,255,255,0.07);border-radius:14px 14px 14px 4px}
-    .map-card{margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.2);border-radius:14px;padding:12px}
-    .map-title{font-size:12px;color:#4CAF50;font-weight:700;margin-bottom:8px}
-    .map-actions{display:flex;gap:8px;margin-top:10px}
-    .map-actions button{flex:1;padding:10px;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer}
-    .gm{background:#4285F4;color:#fff}
-    .ap{background:#111;color:#fff;border:1px solid rgba(255,255,255,0.12)}
-    .proc{color:rgba(255,255,255,0.3);font-size:12px;padding:6px 40px}
-    .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
-    .sb span{color:#E31837;font-size:11px;font-weight:600}
-    .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
-    .ib{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);flex-shrink:0}
-    .ir{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-    .ir input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
-    .snd{width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,0.06);color:#fff;font-size:14px;cursor:pointer;flex-shrink:0}
-    .snd.on{background:#E31837}
-    .ar{display:flex;gap:6px}
-    .ar button{flex:1;padding:12px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:2px}
-    .ar button span:first-child{font-size:18px}
-    .ar button span:last-child{font-size:9px;font-weight:600}
-    .vb{background:#E31837;color:#fff;flex:2!important;flex-direction:row!important;gap:8px!important;justify-content:center}
-    .vb span:last-child{font-size:13px!important;font-weight:700!important}
-    .scb{background:rgba(255,255,255,0.06);color:#fff}
-    .plb{background:rgba(255,255,255,0.06);color:#fff}
-    .nvb{background:rgba(76,175,80,0.16);color:#4CAF50}
-    .lvb{background:rgba(33,150,243,0.15);color:#2196F3}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --red:      #E31837;
+      --red-dim:  #a01028;
+      --red-glow: rgba(227,24,55,0.22);
+      --bg:       #0a0b0f;
+      --bg2:      #11131a;
+      --bg3:      #181c26;
+      --line:     rgba(255,255,255,0.07);
+      --line2:    rgba(255,255,255,0.12);
+      --txt:      #e8eaf0;
+      --txt2:     rgba(232,234,240,0.55);
+      --txt3:     rgba(232,234,240,0.28);
+      --green:    #25D366;
+      --blue:     #3a8dde;
+      --amber:    #f5a623;
+    }
+
+    html, body {
+      height: 100%;
+      background: #0a0b0f;
+      color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+      -webkit-text-size-adjust: 100%;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Shell — flex column, no overflow hidden so footer stays visible */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      height: 100dvh;
+    }
+
+    /* Subtle red glow bg — NOT fixed/z-index, won't block taps */
+    #app::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 200px;
+      background: radial-gradient(ellipse 70% 100% at 50% 0%,
+        rgba(227,24,55,0.07) 0%, transparent 100%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* All direct children sit above the bg glow */
+    #hdr, #langBar, #chat, #sb, #chips, #micBar, #inpArea, #gpsBanner {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── HEADER ────────────────────────────────────────── */
+    #hdr {
+      flex-shrink: 0;
+      height: 54px;
+      background: var(--bg2);
+      border-bottom: 2px solid transparent;
+      border-image: linear-gradient(90deg, transparent, var(--red) 30%, var(--red) 70%, transparent) 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+    }
+
+    .logo { display: flex; align-items: center; gap: 9px; }
+
+    .logo-icon {
+      width: 34px; height: 34px;
+      background: var(--red);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; flex-shrink: 0;
+      box-shadow: 0 0 16px rgba(227,24,55,0.5);
+    }
+
+    .logo-text { display: flex; flex-direction: column; line-height: 1; }
+
+    .logo-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700; font-size: 17px; letter-spacing: 0.4px; color: #fff;
+    }
+
+    .logo-sub {
+      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--red); font-weight: 600; margin-top: 1px;
+    }
+
+    #locBar {
+      display: flex; align-items: center; gap: 5px;
+      background: var(--bg3); border: 1px solid var(--line2);
+      border-radius: 20px; padding: 5px 10px 5px 8px;
+      max-width: 50vw; overflow: hidden;
+      transition: border-color 0.3s;
+    }
+
+    #locBar.no-gps { border-color: rgba(245,166,35,0.5); }
+
+    .gps-dot {
+      width: 7px; height: 7px; background: var(--green);
+      border-radius: 50%; flex-shrink: 0;
+      box-shadow: 0 0 6px var(--green); animation: blink 2s infinite;
+    }
+
+    #locBar.no-gps .gps-dot {
+      background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: none;
+    }
+
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+
+    #locAddr {
+      font-size: 10px; color: var(--txt2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-weight: 500;
+    }
+
+    /* ── GPS BANNER ─────────────────────────────────────── */
+    #gpsBanner {
+      display: none; flex-shrink: 0;
+      background: rgba(245,166,35,0.10);
+      border-bottom: 1px solid rgba(245,166,35,0.30);
+      padding: 7px 14px; font-size: 12px; color: var(--amber);
+      font-weight: 500; text-align: center; letter-spacing: 0.2px;
+    }
+
+    #gpsBanner.show { display: block; }
+
+    /* ── LANGUAGE BAR ───────────────────────────────────── */
+    #langBar {
+      flex-shrink: 0; height: 42px;
+      background: var(--bg2); border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    }
+
+    #langBar::-webkit-scrollbar { display: none; }
+
+    #langBar button {
+      flex-shrink: 0; height: 30px; padding: 0 11px;
+      border-radius: 6px; border: 1px solid var(--line2);
+      background: var(--bg3); color: var(--txt2);
+      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.15);
+      transition: background 0.12s, color 0.12s;
+    }
+
+    #langBar button.active, #langBar button.sel {
+      background: var(--red); border-color: var(--red); color: #fff;
+    }
+
+    /* ── CHAT ───────────────────────────────────────────── */
+    #chat {
+      flex: 1; min-height: 0;
+      overflow-y: auto; overflow-x: hidden;
+      padding: 12px 12px 8px;
+      display: flex; flex-direction: column; gap: 10px;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin; scrollbar-color: var(--line2) transparent;
+    }
+
+    #chat::-webkit-scrollbar { width: 3px; }
+    #chat::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+    .mr { display: flex; align-items: flex-end; gap: 7px; animation: rise 0.2s ease; }
+    @keyframes rise { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+    .mr.u { flex-direction: row-reverse; }
+
+    .av {
+      width: 28px; height: 28px; background: var(--bg3);
+      border: 1px solid rgba(227,24,55,0.25); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px; flex-shrink: 0;
+    }
+
+    .bb {
+      max-width: 80%; padding: 9px 12px; font-size: 13px;
+      line-height: 1.55; border-radius: 14px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+
+    .bb img { display:block; max-width:100%; border-radius:8px; margin-bottom:5px; }
+    .bb.a { background:var(--bg3); border:1px solid var(--line); border-bottom-left-radius:4px; }
+    .bb.u { background:linear-gradient(135deg,var(--red),#c01430); border-bottom-right-radius:4px; color:#fff; }
+
+    .proc {
+      display:flex; align-items:center; gap:8px;
+      color:var(--txt3); font-size:12px; font-style:italic; padding:2px 6px;
+    }
+    .proc::before {
+      content:""; width:13px; height:13px;
+      border:2px solid var(--line2); border-top-color:var(--red);
+      border-radius:50%; animation:spin 0.65s linear infinite; flex-shrink:0;
+    }
+    @keyframes spin { to{transform:rotate(360deg)} }
+
+    /* ── STEPS BAR ──────────────────────────────────────── */
+    #sb {
+      flex-shrink: 0; background: var(--bg2);
+      border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+      overflow-x: auto; scrollbar-width: none; display: none;
+    }
+    #sb:not(:empty) { display: block; }
+    #sb::-webkit-scrollbar { display: none; }
+
+    /* ── QUICK CHIPS ────────────────────────────────────── */
+    #chips {
+      flex-shrink: 0; height: 44px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
+      -webkit-overflow-scrolling: touch; scrollbar-width: none;
+      border-top: 1px solid var(--line); background: var(--bg2);
+    }
+    #chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+      flex-shrink: 0; height: 30px; padding: 0 13px;
+      border-radius: 15px; border: 1px solid var(--line2);
+      background: var(--bg3); color: var(--txt2);
+      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
+      cursor: pointer; white-space: nowrap;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
+      -webkit-user-select: none; user-select: none;
+      transition: background 0.1s, border-color 0.1s, color 0.1s;
+    }
+    .chip:active { background:rgba(227,24,55,0.18); border-color:rgba(227,24,55,0.5); color:#fff; }
+
+    /* ── MIC BAR ────────────────────────────────────────── */
+    #micBar {
+      flex-shrink: 0; max-height: 0; overflow: hidden;
+      background: rgba(227,24,55,0.06);
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: max-height 0.3s ease;
+    }
+    #micBar.on { max-height: 40px; border-top: 1px solid rgba(227,24,55,0.2); }
+
+    .mic-waves { display:flex; gap:3px; align-items:flex-end; height:20px; }
+    .mic-waves span { width:3px; border-radius:2px; background:var(--red); }
+    #micBar.on .mic-waves span:nth-child(1) { animation:mw 1s ease-in-out 0.00s infinite; }
+    #micBar.on .mic-waves span:nth-child(2) { animation:mw 1s ease-in-out 0.10s infinite; }
+    #micBar.on .mic-waves span:nth-child(3) { animation:mw 1s ease-in-out 0.20s infinite; }
+    #micBar.on .mic-waves span:nth-child(4) { animation:mw 1s ease-in-out 0.10s infinite; }
+    #micBar.on .mic-waves span:nth-child(5) { animation:mw 1s ease-in-out 0.00s infinite; }
+    .mic-waves span:nth-child(1),.mic-waves span:nth-child(5){height:5px}
+    .mic-waves span:nth-child(2),.mic-waves span:nth-child(4){height:10px}
+    .mic-waves span:nth-child(3){height:18px}
+    @keyframes mw { 0%,100%{transform:scaleY(.35);opacity:.5} 50%{transform:scaleY(1);opacity:1} }
+
+    #micLabel {
+      font-family: 'Rajdhani', sans-serif; font-size:11px;
+      font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--red);
+    }
+
+    /* ── INPUT FOOTER ───────────────────────────────────── */
+    #inpArea {
+      flex-shrink: 0; background: var(--bg2);
+      border-top: 1px solid var(--line);
+      padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+      display: flex; flex-direction: column; gap: 8px;
+    }
+
+    .inp-row { display:flex; gap:7px; align-items:center; }
+
+    #inp {
+      flex: 1; height: 42px; background: var(--bg3);
+      border: 1px solid var(--line2); border-radius: 11px;
+      padding: 0 14px; color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      /* 16px prevents iOS auto-zoom on focus */
+      font-size: 16px;
+      outline: none; caret-color: var(--red);
+      transition: border-color 0.2s;
+    }
+    #inp::placeholder { color: var(--txt3); }
+    #inp:focus { border-color: rgba(227,24,55,0.5); }
+
+    #sendBtn {
+      width: 42px; height: 42px; border-radius: 11px;
+      border: 1px solid var(--line2); background: var(--bg3);
+      color: var(--txt3); cursor: pointer; font-size: 18px;
+      display: flex; align-items: center; justify-content: center;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+    }
+    #sendBtn.on { background:var(--red); border-color:var(--red); color:#fff; box-shadow:0 0 14px var(--red-glow); }
+
+    /* ── ACTION BUTTONS ─────────────────────────────────── */
+    .btn-row { display:flex; gap:6px; }
+
+    .act-btn {
+      flex: 1;
+      min-height: 52px;         /* big tap target */
+      border-radius: 11px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+      color: var(--txt2);
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700; text-transform: uppercase;
+      cursor: pointer;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+      line-height: 1;
+      /* Touch reliability */
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
+      -webkit-user-select: none; user-select: none;
+      transition: background 0.1s, transform 0.08s, box-shadow 0.12s;
+    }
+    .act-btn:active { transform: scale(0.93); background: rgba(255,255,255,0.05); }
+
+    .btn-icon { font-size: 20px; line-height: 1; }
+    .btn-lbl  { font-size: 9px; letter-spacing: 0.4px; color: var(--txt3); margin-top: 1px; }
+
+    #voiceBtn { flex: 1.5; border-color: rgba(227,24,55,0.28); }
+    #voiceBtn.active {
+      background: var(--red); border-color: var(--red); color: #fff;
+      animation: glow 1.8s ease-in-out infinite;
+    }
+    #voiceBtn.active .btn-lbl { color: rgba(255,255,255,0.75); }
+    @keyframes glow {
+      0%,100%{ box-shadow:0 0 14px rgba(227,24,55,0.35) }
+      50%    { box-shadow:0 0 26px rgba(227,24,55,0.65) }
+    }
+
+    #scanBtn,#photoBtn { border-color:rgba(58,141,222,0.22); }
+    #navBtn  { border-color:rgba(37,211,102,0.22); color:var(--green); }
+    #navBtn .btn-lbl { color:rgba(37,211,102,0.45); }
+    #stopBtn { border-color:rgba(227,24,55,0.22); color:var(--red); }
+    #stopBtn .btn-lbl { color:rgba(227,24,55,0.45); }
+
+    /* Hidden inputs — no stacking context interference */
+    #cameraIn, #photoIn { display:none; }
   </style>
 </head>
+
 <body>
 <div id="app">
-  <div class="hdr">
-    <div class="hdr-l">
-      <div class="hdr-logo">🥷</div>
-      <div>
-        <div class="hdr-t"><span>NINJA</span> CO-PILOT</div>
-        <div class="hdr-s">AI SENIOR DRIVER ASSISTANT</div>
+
+  <header id="hdr">
+    <div class="logo">
+      <div class="logo-icon">🥷</div>
+      <div class="logo-text">
+        <span class="logo-title">Ninja Co-Pilot</span>
+        <span class="logo-sub">AI Senior Driver</span>
       </div>
     </div>
-    <div class="top-actions">
-      <button class="mini-btn" id="gpsBtn" title="Retry GPS">📍</button>
+    <div id="locBar" class="no-gps">
+      <div class="gps-dot"></div>
+      <span id="locAddr">Allow GPS to start</span>
     </div>
+  </header>
+
+  <div id="gpsBanner">
+    📍 Please allow location access when browser prompts — needed for navigation
   </div>
 
-  <div class="loc-bar" id="locBar">
-    <div class="loc-dot"></div>
-    <div>
-      <div class="loc-label">YOUR LOCATION</div>
-      <div class="loc-addr" id="locAddr">Locating...</div>
+  <nav id="langBar" aria-label="Language selector"></nav>
+
+  <main id="chat" role="log" aria-live="polite"></main>
+
+  <div id="sb" role="navigation" aria-label="Route steps"></div>
+
+  <div id="chips" role="toolbar" aria-label="Quick actions"></div>
+
+  <div id="micBar" role="status" aria-live="polite">
+    <div class="mic-waves">
+      <span></span><span></span><span></span><span></span><span></span>
     </div>
+    <span id="micLabel">HANDS-FREE ACTIVE</span>
   </div>
 
-  <div class="chips" id="chips"></div>
-  <div class="chat" id="chat"></div>
-
-  <div class="sb" id="sb">
-    <span>🔊 Speaking...</span>
-    <button id="stopBtn">Stop</button>
-  </div>
-
-  <div class="ib">
-    <div class="ir">
-      <input type="text" id="inp" placeholder="Type or speak in any language...">
-      <button class="snd" id="sendBtn">▶</button>
+  <footer id="inpArea">
+    <div class="inp-row">
+      <input id="inp" type="text" inputmode="text"
+        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+        placeholder="Ask Co-Pilot…" enterkeyhint="send" aria-label="Message" />
+      <button id="sendBtn" aria-label="Send">➤</button>
     </div>
-    <div class="ar">
-      <button class="vb" id="voiceBtn"><span>🎙️</span><span>TAP TO SPEAK</span></button>
-      <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
-      <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
-      <button class="nvb" id="mapBtn"><span>🗺️</span><span>NAV</span></button>
-      <button class="lvb" id="liveBtn"><span>📡</span><span>LIVE</span></button>
+
+    <div class="btn-row">
+      <button id="voiceBtn" class="act-btn">
+        <span class="btn-icon">🎙️</span>
+        <span class="btn-lbl">TAP TO SPEAK</span>
+      </button>
+      <button id="scanBtn" class="act-btn">
+        <span class="btn-icon">📷</span>
+        <span class="btn-lbl">SCAN</span>
+      </button>
+      <button id="photoBtn" class="act-btn">
+        <span class="btn-icon">🖼️</span>
+        <span class="btn-lbl">PHOTO</span>
+      </button>
+      <button id="navBtn" class="act-btn">
+        <span class="btn-icon">🗺️</span>
+        <span class="btn-lbl">NAV</span>
+      </button>
+      <button id="stopBtn" class="act-btn">
+        <span class="btn-icon">🔇</span>
+        <span class="btn-lbl">STOP</span>
+      </button>
     </div>
-  </div>
+  </footer>
+
 </div>
 
+<input id="cameraIn" type="file" accept="image/*" capture="environment" />
+<input id="photoIn"  type="file" accept="image/*" />
+
 <script>
-(function () {
-  "use strict";
-
-  const chatEl  = document.getElementById("chat");
-  const inp     = document.getElementById("inp");
-  const sendBtn = document.getElementById("sendBtn");
-  const voiceBtn= document.getElementById("voiceBtn");
-  const mapBtn  = document.getElementById("mapBtn");
-  const liveBtn = document.getElementById("liveBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const gpsBtn  = document.getElementById("gpsBtn");
-  const locBar  = document.getElementById("locBar");
-  const locAddr = document.getElementById("locAddr");
-  const sb      = document.getElementById("sb");
-  const chipsEl = document.getElementById("chips");
-
-  let gpsPos = null;
-  let currentAddress = "";
-  let gpsWatchId = null;
-  let recognition = null;
-  let lastDestAddress = "";
-  let liveTracking = true;
-
-  const CHIPS = [
-    "Where am I?",
-    "Go to IMM",
-    "Navigate to Jurong Point",
-    "Show my location",
-    "Nearest petrol station",
-    "Nearest toilet"
-  ];
-  CHIPS.forEach(text => {
-    const b = document.createElement("button");
-    b.className = "chip";
-    b.textContent = text;
-    b.onclick = () => sendText(text);
-    chipsEl.appendChild(b);
-  });
-
-  function esc(s) {
-    const d = document.createElement("div");
-    d.textContent = s;
-    return d.innerHTML;
-  }
-
-  function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
-
-  function addBubble(role, text) {
-    const row = document.createElement("div");
-    row.className = "mr " + (role === "user" ? "u" : "a");
-    let html = "";
-    if (role === "assistant") html += '<div class="av">🥷</div>';
-    html += '<div class="bb ' + (role === "user" ? "u" : "a") + '">' + esc(text) + '</div>';
-    row.innerHTML = html;
-    chatEl.appendChild(row);
-    scrollDown();
-  }
-
-  function showProc() {
-    hideProc();
-    const el = document.createElement("div");
-    el.className = "proc";
-    el.id = "proc";
-    el.textContent = "Processing...";
-    chatEl.appendChild(el);
-    scrollDown();
-  }
-
-  function hideProc() {
-    const el = document.getElementById("proc");
-    if (el) el.remove();
-  }
-
-  function setLocState(status, text) {
-    locAddr.textContent = text;
-    if (status === "good") {
-      locBar.classList.add("good");
-    } else {
-      locBar.classList.remove("good");
-    }
-  }
-
-  function speak(text) {
-    try {
-      if (!window.speechSynthesis || !text) return;
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 1.0;
-      u.pitch = 1.0;
-      u.onstart = () => sb.style.display = "flex";
-      u.onend   = () => sb.style.display = "none";
-      u.onerror = () => sb.style.display = "none";
-      window.speechSynthesis.speak(u);
-    } catch (_) {}
-  }
-
-  stopBtn.onclick = function () {
-    try { window.speechSynthesis.cancel(); } catch (_) {}
-    sb.style.display = "none";
-  };
-
-  async function reverseGeocode(lat, lng) {
-    try {
-      const r = await fetch("/api/geocode?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng));
-      const d = await r.json();
-      if (d && d.address) {
-        currentAddress = d.address;
-        setLocState("good", d.address);
-      } else {
-        setLocState("bad", lat.toFixed(5) + ", " + lng.toFixed(5));
+  // Show GPS banner if not acquired after 4 seconds
+  (function () {
+    var banner  = document.getElementById("gpsBanner");
+    var locBar  = document.getElementById("locBar");
+    var timer   = setTimeout(function () {
+      if (locBar.classList.contains("no-gps")) banner.classList.add("show");
+    }, 4000);
+    var obs = new MutationObserver(function () {
+      if (!locBar.classList.contains("no-gps")) {
+        banner.classList.remove("show");
+        clearTimeout(timer);
+        obs.disconnect();
       }
-    } catch (_) {
-      setLocState("bad", lat.toFixed(5) + ", " + lng.toFixed(5));
-    }
-  }
-
-  // =========================================================
-  // iOS GPS FIX
-  // =========================================================
-  function isIOS() {
-    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  }
-
-  function geolocationErrorMessage(err) {
-    if (!window.isSecureContext) {
-      return "GPS blocked: site is not secure HTTPS.";
-    }
-    if (!err) return "Unable to detect location.";
-    switch (err.code) {
-      case 1:
-        if (isIOS()) {
-          return "GPS blocked. Go to: Settings \u2192 Chrome (or Safari) \u2192 Location \u2192 While Using the App.";
-        }
-        return "Location blocked. Allow GPS in browser settings and retry.";
-      case 2:
-        return "Location unavailable. Move to open sky and retry.";
-      case 3:
-        return "GPS timeout. Tap \uD83D\uDCCD to retry.";
-      default:
-        return "Unable to detect location. Tap \uD83D\uDCCD to retry.";
-    }
-  }
-
-  async function checkPermissionAndStart() {
-    if (!("geolocation" in navigator)) {
-      setLocState("bad", "GPS not supported on this phone.");
-      addBubble("assistant", "This phone/browser does not support GPS.");
-      return;
-    }
-    if (!window.isSecureContext) {
-      setLocState("bad", "HTTPS required for GPS.");
-      addBubble("assistant", "Open the app with HTTPS. GPS will not work on insecure pages.");
-      return;
-    }
-    // Check permission state if available (Chrome Android, Safari 16+)
-    if (navigator.permissions && navigator.permissions.query) {
-      try {
-        const perm = await navigator.permissions.query({ name: "geolocation" });
-        if (perm.state === "denied") {
-          const msg = isIOS()
-            ? "GPS denied. Go to: Settings \u2192 Chrome \u2192 Location \u2192 While Using the App."
-            : "GPS denied. Enable location in browser site settings.";
-          setLocState("bad", msg);
-          addBubble("assistant", msg);
-          return;
-        }
-      } catch (_) {
-        // permissions.query not supported — continue
-      }
-    }
-    setLocState("bad", "Locating...");
-    startGPS();
-  }
-
-  function startGPS() {
-    if (gpsWatchId) {
-      try { navigator.geolocation.clearWatch(gpsWatchId); } catch (_) {}
-      gpsWatchId = null;
-    }
-
-    // Fast single fix first
-    navigator.geolocation.getCurrentPosition(
-      async function (pos) {
-        gpsPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
-        gpsBtn.classList.add("on");
-        await reverseGeocode(gpsPos.lat, gpsPos.lng);
-      },
-      function (err) {
-        gpsBtn.classList.remove("on");
-        const msg = geolocationErrorMessage(err);
-        setLocState("bad", msg);
-        addBubble("assistant", msg);
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-    );
-
-    // Continuous live watch
-    gpsWatchId = navigator.geolocation.watchPosition(
-      async function (pos) {
-        if (!liveTracking) return;
-        gpsPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
-        gpsBtn.classList.add("on");
-        await reverseGeocode(gpsPos.lat, gpsPos.lng);
-      },
-      function (err) {
-        gpsBtn.classList.remove("on");
-        setLocState("bad", geolocationErrorMessage(err));
-      },
-      { enableHighAccuracy: true, timeout: 20000, maximumAge: 3000 }
-    );
-  }
-
-  async function openGoogleMapTo(destAddress) {
-    if (!destAddress) return;
-    const url = gpsPos
-      ? "https://www.google.com/maps/dir/" + gpsPos.lat + "," + gpsPos.lng + "/" + encodeURIComponent(destAddress)
-      : "https://www.google.com/maps/search/" + encodeURIComponent(destAddress);
-    window.open(url, "_blank");
-  }
-
-  function showMapCard(destAddress) {
-    const wrap = document.createElement("div");
-    wrap.className = "mr a";
-    const source = gpsPos
-      ? "https://www.google.com/maps?saddr=" + gpsPos.lat + "," + gpsPos.lng + "&daddr=" + encodeURIComponent(destAddress) + "&output=embed"
-      : "https://www.google.com/maps?q=" + encodeURIComponent(destAddress) + "&z=15&output=embed";
-    wrap.innerHTML =
-      '<div class="av">\uD83E\uDD77</div>' +
-      '<div class="bb a" style="padding:0;background:transparent;max-width:88%">' +
-        '<div class="map-card">' +
-          '<div class="map-title">Route to: ' + esc(destAddress) + '</div>' +
-          '<div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)">' +
-            '<iframe src="' + source + '" width="100%" height="180" style="border:0;display:block" loading="lazy" allowfullscreen></iframe>' +
-          '</div>' +
-          '<div class="map-actions">' +
-            '<button class="gm gm-temp">Open Google Maps</button>' +
-            '<button class="ap ap-temp">Use Apple Maps</button>' +
-          '</div>' +
-        '</div>' +
-      '</div>';
-    chatEl.appendChild(wrap);
-    scrollDown();
-    wrap.querySelector(".gm-temp").onclick = () => openGoogleMapTo(destAddress);
-    wrap.querySelector(".ap-temp").onclick = () => window.open("http://maps.apple.com/?daddr=" + encodeURIComponent(destAddress), "_blank");
-  }
-
-  async function sendText(textArg) {
-    const text = (textArg || inp.value || "").trim();
-    if (!text) return;
-    addBubble("user", text);
-    inp.value = "";
-    sendBtn.classList.remove("on");
-    showProc();
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text,
-          lat: gpsPos ? gpsPos.lat : null,
-          lng: gpsPos ? gpsPos.lng : null,
-          address: currentAddress
-        })
-      });
-      const data = await res.json();
-      hideProc();
-      const reply = data.reply || "Something went wrong.";
-      addBubble("assistant", reply);
-      speak(reply);
-      if (data.dest_address) {
-        lastDestAddress = data.dest_address;
-        showMapCard(lastDestAddress);
-      }
-      if (data.show_my_location && currentAddress) {
-        addBubble("assistant", "Current location: " + currentAddress);
-      }
-    } catch (e) {
-      hideProc();
-      addBubble("assistant", "Cannot reach server.");
-    }
-  }
-
-  // ── Always-on mic toggle ──────────────────────────────────
-  let micActive   = false;
-  let isListening = false;
-  let isBusy      = false;
-
-  function setVoiceBtnState(on) {
-    if (on) {
-      voiceBtn.style.background = "#ff3355";
-      voiceBtn.style.boxShadow  = "0 0 0 4px rgba(255,51,85,0.35)";
-      voiceBtn.querySelector("span:last-child").textContent = "🔴 MIC ON";
-    } else {
-      voiceBtn.style.background = "#E31837";
-      voiceBtn.style.boxShadow  = "none";
-      voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
-    }
-  }
-
-  function startSR() {
-    if (!micActive || isListening || isBusy) return;
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { addBubble("assistant", "Voice not supported. Please type."); return; }
-
-    recognition = new SR();
-    recognition.lang = "en-SG";
-    recognition.continuous = true;
-    recognition.interimResults = false;
-
-    recognition.onresult = function (e) {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          const text = e.results[i][0].transcript.trim();
-          if (text) sendText(text);
-        }
-      }
-    };
-
-    recognition.onerror = function (e) {
-      isListening = false;
-      // Restart on non-fatal errors (no-speech, audio-capture)
-      if (micActive && e.error !== "not-allowed") {
-        setTimeout(function () { if (micActive && !isListening) startSR(); }, 800);
-      } else if (e.error === "not-allowed") {
-        stopMic();
-        addBubble("assistant", "Mic blocked. Allow microphone permission.");
-      }
-    };
-
-    recognition.onend = function () {
-      isListening = false;
-      // Auto-restart after reply finishes
-      if (micActive && !isBusy) {
-        setTimeout(function () { if (micActive && !isListening) startSR(); }, 400);
-      }
-    };
-
-    try { recognition.start(); isListening = true; }
-    catch (_) { setTimeout(function () { if (micActive) startSR(); }, 600); }
-  }
-
-  function stopMic() {
-    micActive   = false;
-    isListening = false;
-    if (recognition) { try { recognition.stop(); } catch (_) {} recognition = null; }
-    setVoiceBtnState(false);
-  }
-
-  function toggleMic() {
-    if (micActive) { stopMic(); return; }
-    micActive = true;
-    setVoiceBtnState(true);
-    startSR();
-  }
-
-  // Pause mic while AI is replying, resume after
-  const _origSpeak = speak;
-  speak = function(text) {
-    isBusy = true;
-    if (recognition) { try { recognition.stop(); } catch (_) {} isListening = false; }
-    _origSpeak(text);
-    // Resume mic after estimated speech duration
-    const ms = Math.max(1500, text.length * 60);
-    setTimeout(function () {
-      isBusy = false;
-      if (micActive && !isListening) startSR();
-    }, ms);
-  };
-
-  sendBtn.onclick = () => sendText();
-  inp.addEventListener("input", () => { sendBtn.classList.toggle("on", !!inp.value.trim()); });
-  inp.addEventListener("keydown", function (e) { if (e.key === "Enter") sendText(); });
-  voiceBtn.onclick = toggleMic;
-
-  mapBtn.onclick = function () {
-    if (lastDestAddress) { showMapCard(lastDestAddress); return; }
-    if (currentAddress) {
-      addBubble("assistant", "You are near " + currentAddress);
-      const url = gpsPos
-        ? "https://www.google.com/maps?q=" + gpsPos.lat + "," + gpsPos.lng
-        : "https://www.google.com/maps/search/" + encodeURIComponent(currentAddress);
-      window.open(url, "_blank");
-    } else {
-      addBubble("assistant", "GPS not ready yet. Tap \uD83D\uDCCD to retry.");
-    }
-  };
-
-  liveBtn.onclick = function () {
-    liveTracking = !liveTracking;
-    liveBtn.style.opacity = liveTracking ? "1" : "0.55";
-    addBubble("assistant", liveTracking ? "Live GPS tracking is on." : "Live GPS tracking is paused.");
-  };
-
-  gpsBtn.onclick = function () {
-    addBubble("assistant", "Retrying GPS...");
-    checkPermissionAndStart();
-  };
-
-  document.getElementById("scanBtn").onclick = function () {
-    addBubble("assistant", "Scan ready. Point camera at parcel label.");
-  };
-
-  document.getElementById("photoBtn").onclick = function () {
-    addBubble("assistant", "Photo ready. Take a photo of the building or address.");
-  };
-
-  addBubble("assistant", "Ready. Locking GPS now.\nIf location stays stuck, tap \uD83D\uDCCD and allow location permission in browser.");
-  checkPermissionAndStart();
-
-})();
+    });
+    obs.observe(locBar, { attributes: true, attributeFilter: ["class"] });
+  })();
 </script>
+
+<script src="/static/ai-driver-copilot.js"></script>
 </body>
 </html>
