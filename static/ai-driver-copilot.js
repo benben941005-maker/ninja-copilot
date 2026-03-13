@@ -323,10 +323,8 @@
         // Auto-set routing mode
         if (transportMode === "walking" || transportMode === "mrt") {
             routingMode = "walking";
-            setMapModePill("walking");
         } else if (transportMode === "driving") {
             routingMode = "driving";
-            setMapModePill("driving");
         }
 
         modeBadge.className = TRANSPORT_CLASSES[transportMode] || TRANSPORT_CLASSES.unknown;
