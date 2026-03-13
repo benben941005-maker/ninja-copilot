@@ -658,7 +658,7 @@
                     scannedAddr = camAddr;
                     stopLiveNavigation();
                     addBubble("assistant", "📹 Camera found: " + camAddr);
-                    fetchRoute(camAddr, true, function (routeErr, route) {
+                    fetchRoute(camAddr, function (routeErr, route) {
                         if (!routeErr && route && route.steps && route.steps.length) {
                             showRouteSteps(route);
                             startLiveNavigation(route);
@@ -1648,31 +1648,42 @@ setTimeout(function () {
     }
 
     // ── Route card ─────────────────────────────────────────
+    function resetRoutingModeToAuto() {
+        manualRoutingMode = false;
+    
+        if (transportMode === "walking" || transportMode === "mrt") {
+            routingMode = "walking";
+            setMapModePill("walking");
+        } else {
+            routingMode = "driving";
+            setMapModePill("driving");
+        }
+    }
+    
     function formatStepTextForMode(step, mode) {
     if (!step) return "";
 
     var text = String(step.text || "").trim();
     var distance = Math.round(step.distance || 0);
 
-    // Force correct first-step wording for depart instruction
     if (step.type === "depart") {
-        if (mode === "walking") {
-            return "Start walking for " + distance + "m";
-        }
-        return "Start driving for " + distance + "m";
+        return mode === "walking"
+            ? "Start walking for " + distance + "m"
+            : "Start driving for " + distance + "m";
     }
 
-    // Safety replacements in case backend sends drive wording during walk mode
     if (mode === "walking") {
         text = text
             .replace(/^Start driving\b/i, "Start walking")
-            .replace(/\bdrive\b/gi, "walk")
-            .replace(/\bdriving\b/gi, "walking");
+            .replace(/^Drive\b/i, "Walk")
+            .replace(/\bdriving\b/gi, "walking")
+            .replace(/\bdrive\b/gi, "walk");
     } else {
         text = text
             .replace(/^Start walking\b/i, "Start driving")
-            .replace(/\bwalk\b/gi, "drive")
-            .replace(/\bwalking\b/gi, "driving");
+            .replace(/^Walk\b/i, "Drive")
+            .replace(/\bwalking\b/gi, "driving")
+            .replace(/\bwalk\b/gi, "drive");
     }
 
     return text;
