@@ -1634,8 +1634,15 @@ function resolveBestDestination(rawAddr, cb) {
         var div = document.createElement("div");
         div.id = "routeCard";
         var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
-        html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 ' + esc(route.summary || "") + ' ' + modeLabel + '</div>';
+        var totalM = Math.round(route.total_distance || 0);
+var totalMin = Math.max(1, Math.round((route.total_duration || 0) / 60));
 
+html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 '
+     + esc(route.summary || "")
+     + ' ' + modeLabel
+     + ' • ' + totalM + 'm'
+     + ' • ' + totalMin + ' min'
+     + '</div>';
         route.steps.forEach(function (s, i) {
             html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
             html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
@@ -1883,17 +1890,43 @@ function resolveBestDestination(rawAddr, cb) {
 
     // Map routing mode pills
     if (mpDriving) {
-        mpDriving.addEventListener("click", function () {
-            routingMode = "driving";
-            setMapModePill("driving");
-        });
-    }
+    mpDriving.addEventListener("click", function () {
+        routingMode = "driving";
+        setMapModePill("driving");
+
+        if (scannedAddr) {
+            stopLiveNavigation();
+            addBubble("assistant", "🚗 Switching to driving route...");
+            fetchRoute(scannedAddr, function (e, r) {
+                if (!e && r && r.steps && r.steps.length) {
+                    showRouteSteps(r);
+                    startLiveNavigation(r);
+                } else {
+                    addBubble("assistant", uiText("route_not_found"));
+                }
+            });
+        }
+    });
+}
     if (mpWalking) {
-        mpWalking.addEventListener("click", function () {
-            routingMode = "walking";
-            setMapModePill("walking");
-        });
-    }
+    mpWalking.addEventListener("click", function () {
+        routingMode = "walking";
+        setMapModePill("walking");
+
+        if (scannedAddr) {
+            stopLiveNavigation();
+            addBubble("assistant", "🚶 Switching to walking route...");
+            fetchRoute(scannedAddr, function (e, r) {
+                if (!e && r && r.steps && r.steps.length) {
+                    showRouteSteps(r);
+                    startLiveNavigation(r);
+                } else {
+                    addBubble("assistant", uiText("route_not_found"));
+                }
+            });
+        }
+    });
+}
 
     // Live cam button
     liveCamBtn.addEventListener("click", function () {
