@@ -378,6 +378,7 @@ def place_search():
 
         # Google Places nearby search
                 # Google Places API (New)
+                # Google Places API (New)
         if GOOGLE_PLACES_API_KEY:
             try:
                 headers = {
