@@ -1772,7 +1772,7 @@ function resolveBestDestination(rawAddr, cb) {
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
-                var navAddr = addrMatch[1].trim();
+                var navAddr = cleanDeliveryAddress(addrMatch[1].trim());
                 scannedAddr = navAddr;
                 stopLiveNavigation();
                 setTimeout(function () {
@@ -1817,8 +1817,8 @@ function resolveBestDestination(rawAddr, cb) {
                 if (parsed && parsed.phone) setCustomerPhone(parsed.phone);
 
                 if (parsed && parsed.address) {
-                    var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
-                    scannedAddr = fullAddr;
+                    var navAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
+                    scannedAddr = navAddr;
                     stopLiveNavigation();
                     showDeliveryCard(parsed);
 
@@ -1829,7 +1829,7 @@ function resolveBestDestination(rawAddr, cb) {
                     setTimeout(function () {
                         speak(voice, function () {
                             addBubble("assistant", uiText("route_starting"));
-                            fetchRoute(fullAddr, function (re, route) {
+                            fetchRoute(navAddr, function (re, route) {
                                 if (!re && route && route.steps && route.steps.length) {
                                     showRouteSteps(route);
                                     startLiveNavigation(route);
