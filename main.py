@@ -58,7 +58,7 @@ def verify():
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-3-haiku-20240307",
+                    "model": "claude-sonnet-4-5-20250929",
                     "max_tokens": 20,
                     "messages": [{"role": "user", "content": "Hi"}]
                 },
@@ -569,7 +569,7 @@ def call_claude_chat(system_prompt, messages):
             "content-type": "application/json"
         },
         json={
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-5-20250929",
             "max_tokens": 80,  # FIX: was 300 — forces short GPS-style replies
             "system": system_prompt,
             "messages": messages
@@ -632,7 +632,7 @@ def scan_claude(image_base64, prompt, system_prompt):
             "content-type": "application/json"
         },
         json={
-            "model": "claude-sonnet-4-5",
+            "model": "claude-sonnet-4-5-20250929",
             "max_tokens": 500,  # scan stays at 500 — needs room for JSON output
             "system": system_prompt,
             "messages": [{
