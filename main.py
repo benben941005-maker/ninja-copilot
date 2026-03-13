@@ -1,433 +1,605 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from pydantic import BaseModel
 import os
-import re
-from typing import List, Optional, Any
+import base64
+import tempfile
+import requests
+from flask import Flask, request, jsonify, send_from_directory
 
-import httpx
+app = Flask(__name__, static_folder="static", static_url_path="/static")
 
-try:
-    import anthropic
-except Exception:
-    anthropic = None
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
+GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY", "")
+ONEMAP_EMAIL = os.environ.get("ONEMAP_EMAIL", "")
+ONEMAP_PASSWORD = os.environ.get("ONEMAP_PASSWORD", "")
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
 
-
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"]
-)
-
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
-
-SYSTEM_PROMPT = """You are a seasoned Ninja Van Senior Driver with 10+ years of last-mile delivery experience across Southeast Asia. You talk like a real senior driver — casual, confident, street-smart. You are the driver's trusted buddy riding shotgun, not a corporate bot.
-
-Your expertise:
-- Finding difficult addresses using landmarks, delivery notes, NLP tricks
-- Smart route re-sequencing when traffic hits or stops are skipped
-- Handling absent, angry, or difficult customers professionally
-- Incident reporting: damaged parcels, failed deliveries, road accidents
-- Ninja Van SOPs and escalation procedures
-
-GPS & NAVIGATION:
-- If the driver's message contains [DRIVER_GPS: lat,lng], you know their exact location
-- When a driver mentions a delivery address or says they are lost, extract the destination address
-
-When given an IMAGE:
-- ADDRESS/building/street sign → give navigation guidance
-- DAMAGED PARCEL → guide through incident reporting
-- MAP/ROUTE → suggest best sequence
-- CUSTOMER NOTE → interpret and advise
-
-CRITICAL LANGUAGE RULE:
-- ALWAYS reply in EXACTLY the same language the driver used
-- If Malay → reply Malay. Chinese → reply Chinese. Thai → reply Thai. Tamil → reply Tamil. Etc.
-- Never switch languages unless the driver switches first
-- Be casual and natural like a local coworker
-
-IMPORTANT RESPONSE FORMAT:
-- Do NOT use emojis
-- Plain text only, no markdown
-- SHORT and ACTIONABLE — max 3 steps
-- Encouraging tone
-
-SPECIAL TAGS (add on new line when relevant):
-- If driver needs navigation: [NAVIGATE_TO: full address]
-- If driver wants to see location: [SHOW_MY_LOCATION]
-"""
+_onemap_token = None
 
 
-class ChatRequest(BaseModel):
-    messages: List[dict]
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
 
 
-@app.get("/")
-async def root():
-    # your frontend file should still be static/index.html
-    return FileResponse("static/index.html")
+@app.route("/health")
+def health():
+    return jsonify({"status": "ok"})
 
 
-@app.get("/health")
-async def health():
-    return {
-        "status": "ok",
-        "anthropic_configured": bool(ANTHROPIC_API_KEY),
-        "openai_configured": bool(OPENAI_API_KEY),
-    }
+@app.route("/<path:path>")
+def static_files(path):
+    return send_from_directory("static", path)
 
 
-# ---------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------
-def extract_text_from_content(content: Any) -> str:
-    if isinstance(content, str):
-        return content.strip()
-
-    if isinstance(content, list):
-        parts = []
-        for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                parts.append(str(item.get("text", "")))
-        return "\n".join(p for p in parts if p).strip()
-
-    return ""
-
-
-def detect_language(text: str) -> str:
-    t = (text or "").strip()
-
-    if not t:
-        return "en"
-
-    # Chinese
-    if re.search(r"[\u4e00-\u9fff]", t):
-        return "zh"
-
-    # Japanese
-    if re.search(r"[\u3040-\u30ff]", t):
-        return "ja"
-
-    # Korean
-    if re.search(r"[\uac00-\ud7af]", t):
-        return "ko"
-
-    # Thai
-    if re.search(r"[\u0e00-\u0e7f]", t):
-        return "th"
-
-    # Tamil
-    if re.search(r"[\u0b80-\u0bff]", t):
-        return "ta"
-
-    # Vietnamese
-    if re.search(r"[ăâđêôơưĂÂĐÊÔƠƯàáạảãầấậẩẫằắặẳẵèéẹẻẽềếệểễìíịỉĩòóọỏõồốộổỗờớợởỡùúụủũừứựửữỳýỵỷỹ]", t):
-        return "vi"
-
-    low = t.lower()
-
-    # Malay
-    if re.search(r"\b(saya|awak|anda|tak|tidak|boleh|jalan|alamat|parcel|bungkusan|hujan|hantar|dekat)\b", low):
-        return "ms"
-
-    # Indonesian
-    if re.search(r"\b(saya|kamu|anda|tidak|bisa|jalan|alamat|paket|kirim|dekat|macet)\b", low):
-        return "id"
-
-    # Filipino
-    if re.search(r"\b(ako|ikaw|saan|hindi|pwede|pakete|malapit|salamat)\b", low):
-        return "fil"
-
-    return "en"
-
-
-def fallback_reply(user_text: str) -> str:
-    lang = detect_language(user_text)
-    low = user_text.lower()
-
-    wants_location = any(
-        x in low for x in [
-            "where am i", "show my location", "my location", "where i am",
-            "我在哪里", "我的位置", "我在哪", "lokasi saya", "di mana saya",
-            "saya dekat mana", "ฉันอยู่ไหน", "我喺邊", "எங்கே இருக்கிறேன்"
-        ]
-    )
-
-    wants_navigation = any(
-        x in low for x in [
-            "go to", "navigate to", "show map", "route to", "bring me to",
-            "带我去", "导航到", "去", "怎么去",
-            "pergi ke", "jalan ke", "navigate",
-            "ไป", "นำทาง", "เส้นทาง",
-            "đi đến", "chỉ đường",
-            "案内", "行きたい",
-            "길 안내", "이동"
-        ]
-    )
-
-    address_guess = extract_destination(user_text)
-
-    if lang == "zh":
-        if wants_location:
-            return "这是你现在的位置。我帮你开地图。 [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"收到，我帮你导航过去。先看地图再走。 [NAVIGATE_TO: {address_guess}]"
-        if "hello" in low or "hi" in low or "你好" in user_text:
-            return "收到，我在。你可以直接说地址、拍标签，或问我现在在哪里。"
-        return "我收到你的信息了。你可以直接说目的地、问路线，或者拍照给我看。"
-
-    if lang == "ms":
-        if wants_location:
-            return "Ini lokasi anda sekarang. Saya buka peta untuk anda. [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"Baik, saya bantu navigasi ke sana. [NAVIGATE_TO: {address_guess}]"
-        return "Saya terima mesej anda. Boleh beri alamat penuh, tanya arah, atau ambil gambar label."
-
-    if lang == "id":
-        if wants_location:
-            return "Ini lokasi Anda sekarang. Saya buka peta. [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"Baik, saya bantu navigasi ke sana. [NAVIGATE_TO: {address_guess}]"
-        return "Pesan Anda sudah masuk. Silakan kirim alamat lengkap, tanya rute, atau foto label."
-
-    if lang == "th":
-        if wants_location:
-            return "นี่คือตำแหน่งของคุณตอนนี้ ผมจะเปิดแผนที่ให้ [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"โอเค ผมจะช่วยนำทางไปที่นี่ [NAVIGATE_TO: {address_guess}]"
-        return "ผมได้รับข้อความแล้ว คุณส่งที่อยู่ ถามเส้นทาง หรือถ่ายรูปฉลากมาได้เลย"
-
-    if lang == "vi":
-        if wants_location:
-            return "Đây là vị trí hiện tại của bạn. Tôi sẽ mở bản đồ. [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"Được, tôi sẽ dẫn đường tới đó. [NAVIGATE_TO: {address_guess}]"
-        return "Tôi đã nhận tin nhắn. Bạn có thể gửi địa chỉ, hỏi đường hoặc chụp nhãn kiện hàng."
-
-    if lang == "ja":
-        if wants_location:
-            return "今の場所です。地図を開きます。 [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"了解です。そこまで案内します。 [NAVIGATE_TO: {address_guess}]"
-        return "メッセージを受け取りました。住所、ルート、またはラベル写真を送ってください。"
-
-    if lang == "ko":
-        if wants_location:
-            return "현재 위치입니다. 지도를 열어드릴게요. [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"좋아요. 그곳으로 안내할게요. [NAVIGATE_TO: {address_guess}]"
-        return "메시지 받았습니다. 주소를 보내거나 길을 물어보거나 라벨 사진을 찍어주세요."
-
-    if lang == "ta":
-        if wants_location:
-            return "இது உங்கள் தற்போதைய இடம். நான் வரைபடத்தை திறக்கிறேன். [SHOW_MY_LOCATION]"
-        if wants_navigation and address_guess:
-            return f"சரி, நான் அந்த இடத்துக்கு வழிகாட்டுகிறேன். [NAVIGATE_TO: {address_guess}]"
-        return "உங்கள் செய்தி வந்துவிட்டது. முகவரி, வழி, அல்லது லேபல் படம் அனுப்பலாம்."
-
-    # English
-    if wants_location:
-        return "This is your current location. I’ll open the map. [SHOW_MY_LOCATION]"
-    if wants_navigation and address_guess:
-        return f"Got it. I’ll guide you there. [NAVIGATE_TO: {address_guess}]"
-    if "hello" in low or "hi" in low:
-        return "I’m here. Send the address, ask for route help, or snap a parcel label."
-    return "Message received. Send the address, ask for route help, or take a photo of the label."
-
-
-def extract_destination(text: str) -> Optional[str]:
-    if not text:
+def get_onemap_token():
+    global _onemap_token
+    if _onemap_token:
+        return _onemap_token
+    if not ONEMAP_EMAIL or not ONEMAP_PASSWORD:
         return None
-
-    patterns = [
-        r"(?:go to|navigate to|route to|bring me to)\s+(.+)",
-        r"(?:带我去|导航到|去)\s*(.+)",
-        r"(?:pergi ke|jalan ke)\s+(.+)",
-        r"(?:đi đến)\s+(.+)",
-        r"(?:案内して|行きたい)\s*(.+)",
-        r"(?:가자|이동|길 안내)\s*(.+)",
-    ]
-
-    for p in patterns:
-        m = re.search(p, text, flags=re.IGNORECASE)
-        if m:
-            dest = m.group(1).strip()
-            dest = re.sub(r"\[DRIVER_GPS:.*?\]", "", dest).strip()
-            if dest:
-                return dest
-
+    try:
+        resp = requests.post(
+            "https://www.onemap.gov.sg/api/auth/post/getToken",
+            json={"email": ONEMAP_EMAIL, "password": ONEMAP_PASSWORD},
+            timeout=8
+        )
+        data = resp.json()
+        token = data.get("access_token") or data.get("token")
+        if token:
+            _onemap_token = token
+            return token
+    except Exception:
+        pass
     return None
 
 
-def parse_special_tags(full_text: str) -> dict:
-    reply_text = full_text or ""
-    dest_address = None
-    show_my_location = False
+@app.route("/api/geocode")
+def geocode():
+    try:
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
 
-    nav_match = re.search(r"\[NAVIGATE_TO:\s*(.*?)\]", reply_text, flags=re.IGNORECASE | re.DOTALL)
-    if nav_match:
-        dest_address = nav_match.group(1).strip()
-        reply_text = re.sub(r"\[NAVIGATE_TO:\s*.*?\]", "", reply_text, flags=re.IGNORECASE | re.DOTALL).strip()
+        token = get_onemap_token()
+        if token:
+            try:
+                resp = requests.get(
+                    "https://www.onemap.gov.sg/api/public/revgeocode",
+                    params={"location": f"{lat},{lng}", "buffer": 40, "addressType": "All", "otherFeatures": "N"},
+                    headers={"Authorization": token},
+                    timeout=8
+                )
+                data = resp.json()
+                results = data.get("GeocodeInfo", [])
+                if results:
+                    r = results[0]
+                    parts = []
+                    blk = r.get("BLOCK", "")
+                    road = r.get("ROAD", "")
+                    building = r.get("BUILDINGNAME", "")
+                    postal = r.get("POSTALCODE", "")
+                    if blk and road:
+                        parts.append(f"{blk} {road}")
+                    elif road:
+                        parts.append(road)
+                    if building and building != "NIL":
+                        parts.append(building)
+                    if postal and postal != "NIL":
+                        parts.append(f"Singapore {postal}")
+                    address = ", ".join([p for p in parts if p.strip()])
+                    if address:
+                        return jsonify({"ok": True, "address": address, "source": "onemap"})
+            except Exception:
+                pass
 
-    if re.search(r"\[SHOW_MY_LOCATION\]", reply_text, flags=re.IGNORECASE):
-        show_my_location = True
-        reply_text = re.sub(r"\[SHOW_MY_LOCATION\]", "", reply_text, flags=re.IGNORECASE).strip()
-
-    return {
-        "reply": reply_text.strip() or "OK",
-        "dest_address": dest_address,
-        "show_my_location": show_my_location,
-    }
-
-
-async def call_claude(messages: List[dict]) -> str:
-    if not ANTHROPIC_API_KEY or anthropic is None:
-        raise RuntimeError("Claude not configured")
-
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    response = client.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=400,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
-
-    parts = []
-    for block in response.content:
-        if hasattr(block, "text"):
-            parts.append(block.text)
-
-    return "\n".join(parts).strip()
-
-
-async def call_openai_text(messages: List[dict]) -> str:
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OpenAI not configured")
-
-    converted_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-
-    for m in messages:
-        role = m.get("role", "user")
-        content = m.get("content", "")
-
-        if isinstance(content, str):
-            converted_messages.append({"role": role, "content": content})
-        elif isinstance(content, list):
-            text_parts = []
-            for item in content:
-                if isinstance(item, dict) and item.get("type") == "text":
-                    text_parts.append(item.get("text", ""))
-            converted_messages.append({"role": role, "content": "\n".join(text_parts).strip()})
-
-    async with httpx.AsyncClient(timeout=35) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-            json={
-                "model": "gpt-4o-mini",
-                "messages": converted_messages,
-                "max_tokens": 300,
-            },
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/reverse",
+            params={"lat": lat, "lon": lng, "format": "json", "addressdetails": 1, "zoom": 18},
+            headers={"User-Agent": "NinjaCoPilot/1.0"},
+            timeout=10
         )
         data = resp.json()
-
-    if resp.status_code >= 400:
-        raise RuntimeError(str(data))
-
-    return data["choices"][0]["message"]["content"].strip()
-
-
-# ---------------------------------------------------------
-# Transcribe
-# ---------------------------------------------------------
-@app.post("/transcribe")
-async def transcribe(audio: UploadFile = File(...)):
-    """
-    Uses OpenAI Whisper if OPENAI_API_KEY exists.
-    If not, frontend falls back to Web Speech API.
-    """
-    if not OPENAI_API_KEY:
-        return {"transcript": "", "language": "en", "fallback": True}
-
-    try:
-        audio_data = await audio.read()
-
-        async with httpx.AsyncClient(timeout=40) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/audio/transcriptions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                files={
-                    "file": (
-                        audio.filename or "audio.webm",
-                        audio_data,
-                        audio.content_type or "audio/webm"
-                    )
-                },
-                data={
-                    "model": "whisper-1",
-                    "response_format": "verbose_json"
-                }
-            )
-
-        result = response.json()
-
-        if response.status_code >= 400:
-            return {
-                "transcript": "",
-                "language": "en",
-                "fallback": True,
-                "error": str(result),
-            }
-
-        return {
-            "transcript": result.get("text", ""),
-            "language": result.get("language", "en"),
-            "fallback": False
-        }
+        addr = data.get("address", {})
+        parts = []
+        house = addr.get("house_number", "")
+        road = addr.get("road") or addr.get("pedestrian") or addr.get("footway") or ""
+        suburb = addr.get("suburb") or addr.get("neighbourhood") or ""
+        postcode = addr.get("postcode", "")
+        if road:
+            parts.append((house + " " + road).strip())
+        if suburb:
+            parts.append(suburb)
+        if postcode:
+            parts.append(f"Singapore {postcode}")
+        address = ", ".join([p for p in parts if p.strip()]) or data.get("display_name", f"{lat},{lng}")
+        return jsonify({"ok": True, "address": address, "source": "nominatim"})
 
     except Exception as e:
-        return {
-            "transcript": "",
-            "language": "en",
-            "fallback": True,
-            "error": str(e)
-        }
+        return jsonify({"ok": False, "address": None, "error": str(e)})
 
 
-# ---------------------------------------------------------
-# Chat
-# ---------------------------------------------------------
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    user_text = ""
-    if request.messages:
-        user_text = extract_text_from_content(request.messages[-1].get("content", ""))
+@app.route("/api/address-to-latlng")
+def address_to_latlng():
+    try:
+        address = request.args.get("address", "").strip()
+        user_lat = request.args.get("user_lat")
+        user_lng = request.args.get("user_lng")
+        use_places = request.args.get("use_places", "0") == "1"
 
-    # 1. Try Claude
-    if ANTHROPIC_API_KEY:
+        if not address:
+            return jsonify({"error": "Missing address"}), 400
+
+        if use_places and GOOGLE_PLACES_API_KEY:
+            try:
+                params = {
+                    "input": address,
+                    "inputtype": "textquery",
+                    "fields": "geometry,name,formatted_address",
+                    "key": GOOGLE_PLACES_API_KEY
+                }
+                if user_lat and user_lng:
+                    params["locationbias"] = f"circle:5000@{user_lat},{user_lng}"
+                resp = requests.get(
+                    "https://maps.googleapis.com/maps/api/place/findplacefromtext/json",
+                    params=params,
+                    timeout=8
+                )
+                data = resp.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    c = candidates[0]
+                    loc = c.get("geometry", {}).get("location", {})
+                    if loc.get("lat") is not None and loc.get("lng") is not None:
+                        return jsonify({
+                            "lat": loc["lat"],
+                            "lng": loc["lng"],
+                            "display": c.get("formatted_address", address),
+                            "place_name": c.get("name", address),
+                            "source": "google"
+                        })
+            except Exception:
+                pass
+
+        token = get_onemap_token()
+        if token:
+            try:
+                resp = requests.get(
+                    "https://www.onemap.gov.sg/api/common/elastic/search",
+                    params={"searchVal": address, "returnGeom": "Y", "getAddrDetails": "Y", "pageNum": 1},
+                    timeout=8
+                )
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    r = results[0]
+                    lat = float(r.get("LATITUDE", 0))
+                    lng = float(r.get("LONGITUDE", 0))
+                    if lat and lng:
+                        return jsonify({
+                            "lat": lat,
+                            "lng": lng,
+                            "display": r.get("ADDRESS", address),
+                            "place_name": r.get("SEARCHVAL", address),
+                            "source": "onemap"
+                        })
+            except Exception:
+                pass
+
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": address + " Singapore", "format": "json", "limit": 1},
+            headers={"User-Agent": "NinjaCoPilot/1.0"},
+            timeout=10
+        )
+        results = resp.json()
+        if not results:
+            return jsonify({"error": "Address not found", "lat": None, "lng": None})
+
+        first = results[0]
+        return jsonify({
+            "lat": float(first["lat"]),
+            "lng": float(first["lon"]),
+            "display": first.get("display_name", address),
+            "place_name": address,
+            "source": "nominatim"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "lat": None, "lng": None})
+
+
+@app.route("/api/place-search")
+def place_search():
+    try:
+        q = request.args.get("q", "").strip()
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+
+        if not q:
+            return jsonify({"error": "Missing query"}), 400
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
+
+        if GOOGLE_PLACES_API_KEY:
+            try:
+                resp = requests.get(
+                    "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                    params={"query": q, "location": f"{lat},{lng}", "radius": 2500, "key": GOOGLE_PLACES_API_KEY},
+                    timeout=8
+                )
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    r = results[0]
+                    loc = r.get("geometry", {}).get("location", {})
+                    return jsonify({
+                        "lat": loc.get("lat"),
+                        "lng": loc.get("lng"),
+                        "name": r.get("name", q),
+                        "address": r.get("formatted_address", ""),
+                        "source": "google"
+                    })
+            except Exception:
+                pass
+
+        resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": q + " Singapore", "format": "json", "limit": 1, "viewbox": "103.6,1.2,104.1,1.5", "bounded": 1},
+            headers={"User-Agent": "NinjaCoPilot/1.0"},
+            timeout=10
+        )
+        results = resp.json()
+        if results:
+            r = results[0]
+            return jsonify({
+                "lat": float(r["lat"]),
+                "lng": float(r["lon"]),
+                "name": q,
+                "address": r.get("display_name", ""),
+                "source": "nominatim"
+            })
+
+        return jsonify({"error": "Place not found"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+
+@app.route("/api/route")
+def route():
+    try:
+        from_lat = request.args.get("from_lat")
+        from_lng = request.args.get("from_lng")
+        to_lat = request.args.get("to_lat")
+        to_lng = request.args.get("to_lng")
+        mode = request.args.get("mode", "driving")
+
+        if not all([from_lat, from_lng, to_lat, to_lng]):
+            return jsonify({"error": "Missing coordinates"}), 400
+
+        profile = "foot" if mode == "walking" else "car"
+        url = (
+            f"https://router.project-osrm.org/route/v1/{profile}/"
+            f"{from_lng},{from_lat};{to_lng},{to_lat}"
+            f"?overview=full&steps=true&annotations=false&geometries=geojson"
+        )
+
+        resp = requests.get(url, timeout=15)
+        data = resp.json()
+
+        if data.get("code") != "Ok" or not data.get("routes"):
+            return jsonify({"error": "No route found", "steps": []})
+
+        route_data = data["routes"][0]
+        steps = []
+        for leg in route_data.get("legs", []):
+            for step in leg.get("steps", []):
+                maneuver = step.get("maneuver", {})
+                name = step.get("name", "")
+                distance = step.get("distance", 0)
+                duration = step.get("duration", 0)
+                modifier = maneuver.get("modifier", "")
+                m_type = maneuver.get("type", "")
+                loc = maneuver.get("location", [None, None])
+
+                text = build_instruction(m_type, modifier, name, distance)
+                if text:
+                    steps.append({
+                        "text": text,
+                        "distance": round(distance),
+                        "duration": round(duration),
+                        "type": m_type,
+                        "modifier": modifier,
+                        "lat": loc[1] if len(loc) > 1 else None,
+                        "lng": loc[0] if len(loc) > 0 else None
+                    })
+
+        total_dist = round(route_data.get("distance", 0))
+        total_time = round(route_data.get("duration", 0))
+
+        return jsonify({
+            "steps": steps,
+            "total_distance": total_dist,
+            "total_duration": total_time,
+            "summary": f"{total_dist}m, ~{max(1, total_time // 60)} min",
+            "geometry": route_data.get("geometry", {})
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e), "steps": []})
+
+
+def build_instruction(m_type, modifier, name, distance):
+    dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance / 1000, 1)}km"
+    road = f" onto {name}" if name else ""
+
+    if m_type == "depart":
+        return f"Start driving{road} for {dist_str}"
+    elif m_type == "arrive":
+        return "Arrived at destination"
+    elif m_type == "turn":
+        return f"Turn {modifier}{road}, continue {dist_str}"
+    elif m_type == "new name":
+        return f"Continue{road} for {dist_str}"
+    elif m_type == "merge":
+        return f"Merge {modifier}{road} for {dist_str}"
+    elif m_type == "fork":
+        return f"Keep {modifier} at fork{road} for {dist_str}"
+    elif m_type in ("roundabout", "rotary"):
+        return f"Enter roundabout, exit{road}"
+    elif m_type == "end of road":
+        return f"Turn {modifier} at end of road{road}"
+    elif m_type == "continue":
+        return f"Continue straight{road} for {dist_str}"
+    elif m_type in ("on ramp", "off ramp"):
+        return f"Take ramp {modifier}{road}"
+    elif m_type == "notification":
+        return None
+    else:
+        if modifier:
+            return f"Go {modifier}{road} for {dist_str}"
+        elif name:
+            return f"Continue on {name} for {dist_str}"
+        return None
+
+
+@app.route("/api/weather")
+def weather():
+    try:
+        lat = request.args.get("lat")
+        lng = request.args.get("lng")
+        if not lat or not lng:
+            return jsonify({"error": "Missing lat/lng"}), 400
+
+        if not WEATHER_API_KEY:
+            return jsonify({"status": "weather_unavailable", "is_rain": False, "description": "Weather API key not configured"})
+
+        resp = requests.get(
+            "https://api.weatherapi.com/v1/current.json",
+            params={"key": WEATHER_API_KEY, "q": f"{lat},{lng}"},
+            timeout=10
+        )
+        data = resp.json()
+        condition_text = str(data.get("current", {}).get("condition", {}).get("text", "")).lower()
+        rain_keywords = ["rain", "drizzle", "shower", "storm", "thunder"]
+        is_rain = any(k in condition_text for k in rain_keywords)
+
+        return jsonify({
+            "status": "ok",
+            "is_rain": is_rain,
+            "description": condition_text or "unknown",
+            "temp_c": data.get("current", {}).get("temp_c")
+        })
+
+    except Exception as e:
+        return jsonify({"status": "weather_error", "is_rain": False, "description": str(e)})
+
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    try:
+        data = request.json or {}
+        system = data.get("system", "")
+        messages = data.get("messages", [])
+
+        if AI_PROVIDER == "openai" and OPENAI_API_KEY:
+            reply = call_openai(system, messages)
+        else:
+            reply = call_claude(system, messages)
+
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/scan", methods=["POST"])
+def scan():
+    try:
+        data = request.json or {}
+        system = data.get("system", "")
+        image_base64 = data.get("image_base64", "")
+        ocr_prompt = data.get("ocr_prompt", "Extract address from this label.")
+
+        if not image_base64:
+            return jsonify({"error": "No image provided"}), 400
+
+        if AI_PROVIDER == "openai" and OPENAI_API_KEY:
+            reply = call_openai_vision(system, image_base64, ocr_prompt)
+        else:
+            reply = call_claude_vision(system, image_base64, ocr_prompt)
+
+        return jsonify({"reply": reply})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/transcribe", methods=["POST"])
+def transcribe():
+    try:
+        data = request.json or {}
+        audio_base64 = data.get("audio_base64", "")
+        language = data.get("language", "en")
+
+        if not audio_base64:
+            return jsonify({"error": "No audio", "text": ""})
+
+        if not OPENAI_API_KEY:
+            return jsonify({"error": "OpenAI API key required for transcription", "text": ""})
+
+        audio_bytes = base64.b64decode(audio_base64)
+
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as f:
+            f.write(audio_bytes)
+            temp_path = f.name
+
         try:
-            full_text = await call_claude(request.messages)
-            return parse_special_tags(full_text)
-        except Exception:
-            pass
+            lang_map = {
+                "en": "en", "en-SG": "en", "zh-CN": "zh", "zh-TW": "zh", "zh-HK": "zh",
+                "ms-MY": "ms", "ta-IN": "ta", "th-TH": "th", "vi-VN": "vi",
+                "id-ID": "id", "ko-KR": "ko", "ja-JP": "ja"
+            }
 
-    # 2. Try OpenAI text fallback
-    if OPENAI_API_KEY:
-        try:
-            full_text = await call_openai_text(request.messages)
-            return parse_special_tags(full_text)
-        except Exception:
-            pass
+            whisper_lang = "en"
+            for code, wl in lang_map.items():
+                if language == code or language.startswith(code.split("-")[0]):
+                    whisper_lang = wl
+                    break
 
-    # 3. Safe local fallback so app never says "No response"
-    full_text = fallback_reply(user_text)
-    return parse_special_tags(full_text)
+            with open(temp_path, "rb") as audio_file:
+                resp = requests.post(
+                    "https://api.openai.com/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                    files={"file": ("audio.webm", audio_file, "audio/webm")},
+                    data={"model": "whisper-1", "language": whisper_lang},
+                    timeout=30
+                )
+
+            result = resp.json()
+            os.unlink(temp_path)
+
+            if "text" in result:
+                return jsonify({"text": result["text"]})
+
+            return jsonify({"error": result.get("error", {}).get("message", "Whisper error"), "text": ""})
+
+        except Exception as e:
+            try:
+                os.unlink(temp_path)
+            except Exception:
+                pass
+            return jsonify({"error": str(e), "text": ""})
+
+    except Exception as e:
+        return jsonify({"error": str(e), "text": ""})
 
 
-# Serve static files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+def call_claude(system, messages):
+    if not ANTHROPIC_API_KEY:
+        raise Exception("ANTHROPIC_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 120,
+            "system": system,
+            "messages": messages
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", str(data["error"])))
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+def call_claude_vision(system, image_base64, prompt):
+    if not ANTHROPIC_API_KEY:
+        raise Exception("ANTHROPIC_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01"
+        },
+        json={
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 400,
+            "system": system,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_base64}},
+                    {"type": "text", "text": prompt}
+                ]
+            }]
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", str(data["error"])))
+    return "".join(block.get("text", "") for block in data.get("content", []))
+
+
+def call_openai(system, messages):
+    if not OPENAI_API_KEY:
+        raise Exception("OPENAI_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"},
+        json={"model": "gpt-4o", "max_tokens": 120, "messages": [{"role": "system", "content": system}] + messages},
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", "OpenAI error"))
+    content = data["choices"][0]["message"]["content"]
+    return content or ""
+
+
+def call_openai_vision(system, image_base64, prompt):
+    if not OPENAI_API_KEY:
+        raise Exception("OPENAI_API_KEY is missing")
+
+    resp = requests.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {OPENAI_API_KEY}"},
+        json={
+            "model": "gpt-4o",
+            "max_tokens": 400,
+            "messages": [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ]
+        },
+        timeout=30
+    )
+    data = resp.json()
+    if "error" in data:
+        raise Exception(data["error"].get("message", "OpenAI error"))
+    content = data["choices"][0]["message"]["content"]
+    return content or ""
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)
