@@ -314,7 +314,11 @@
                 "Never reply in Mandarin."
             ].join(" ");
         } else {
-            replyRule = "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+            replyRule = [
+                "DEFAULT LANGUAGE: " + currentLang().ai + ".",
+                "AUTO-DETECT: If driver writes in a different language, reply in THAT language.",
+                "Never translate street names, block numbers, postal codes, unit numbers, or phone numbers."
+            ].join(" ");
         }
 
         return [
