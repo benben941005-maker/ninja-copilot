@@ -67,6 +67,7 @@
 
     // Routing mode preference (can be overridden by transport detection)
     var routingMode = "driving"; // driving | walking
+    var manualRoutingMode = false; // true when user manually taps Drive/Walk
 
     // Leaflet map
     var leafletMap = null, mapMarker = null, routeLayer = null, destMarker = null;
@@ -314,19 +315,22 @@
         mrt:     "mode-badge mode-mrt",
         unknown: "mode-badge mode-unknown"
     };
-
     function updateTransportMode(speedMs) {
         var newMode = detectTransportMode(speedMs);
         if (newMode === transportMode) return;
         transportMode = newMode;
-
-        // Auto-set routing mode
-        if (transportMode === "walking" || transportMode === "mrt") {
-            routingMode = "walking";
-        } else if (transportMode === "driving") {
-            routingMode = "driving";
+    
+        // Auto-set routing mode only if user did NOT manually choose
+        if (!manualRoutingMode) {
+            if (transportMode === "walking" || transportMode === "mrt") {
+                routingMode = "walking";
+                setMapModePill("walking");
+            } else if (transportMode === "driving") {
+                routingMode = "driving";
+                setMapModePill("driving");
+            }
         }
-
+    
         modeBadge.className = TRANSPORT_CLASSES[transportMode] || TRANSPORT_CLASSES.unknown;
         modeBadge.textContent = TRANSPORT_LABELS[transportMode] || TRANSPORT_LABELS.unknown;
     }
