@@ -1,453 +1,275 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0a0b0f" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <title>Ninja Co-Pilot</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#0D0D1A">
+    <title>Ninja Co-Pilot</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+        body{margin:0;background:#0D0D1A;font-family:'DM Sans',sans-serif;overflow:hidden}
+        input::placeholder{color:rgba(255,255,255,0.25)}
+        ::-webkit-scrollbar{width:3px}
+        ::-webkit-scrollbar-thumb{background:rgba(227,24,55,0.4);border-radius:2px}
+        #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:500px;margin:0 auto;background:#0D0D1A}
 
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet" />
+        .hdr{padding:8px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
+        .hdr-l{display:flex;align-items:center;gap:8px}
+        .hdr-logo{width:32px;height:32px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:16px}
+        .hdr-t{color:#fff;font-weight:700;font-size:13px}.hdr-t span{color:#E31837}
+        .hdr-s{color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:1px}
+        .hdr-r{display:flex;align-items:center;gap:6px}
 
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        /* WEATHER BADGE */
+        .wx-badge{display:flex;align-items:center;gap:5px;padding:4px 8px;border-radius:10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08)}
+        .wx-icon{font-size:14px;line-height:1}
+        .wx-info{display:flex;flex-direction:column}
+        .wx-temp{color:#fff;font-size:11px;font-weight:700;line-height:1.2}
+        .wx-desc{color:rgba(255,255,255,0.4);font-size:9px;letter-spacing:0.3px;max-width:55px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .wx-badge.rain{background:rgba(30,144,255,0.15);border-color:rgba(30,144,255,0.3)}
 
-    :root {
-      --red:      #E31837;
-      --red-dim:  #a01028;
-      --red-glow: rgba(227,24,55,0.22);
-      --bg:       #0a0b0f;
-      --bg2:      #11131a;
-      --bg3:      #181c26;
-      --line:     rgba(255,255,255,0.07);
-      --line2:    rgba(255,255,255,0.12);
-      --txt:      #e8eaf0;
-      --txt2:     rgba(232,234,240,0.55);
-      --txt3:     rgba(232,234,240,0.28);
-      --green:    #25D366;
-      --blue:     #3a8dde;
-      --amber:    #f5a623;
-    }
+        /* TRANSPORT MODE */
+        .mode-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:8px;font-size:9px;font-weight:700;letter-spacing:0.3px;border:1px solid;white-space:nowrap}
+        .mode-driving{background:rgba(76,175,80,0.15);border-color:rgba(76,175,80,0.3);color:#4CAF50}
+        .mode-walking{background:rgba(255,193,7,0.15);border-color:rgba(255,193,7,0.3);color:#FFC107}
+        .mode-mrt{background:rgba(33,150,243,0.15);border-color:rgba(33,150,243,0.3);color:#2196F3}
+        .mode-unknown{background:rgba(255,255,255,0.05);border-color:rgba(255,255,255,0.08);color:rgba(255,255,255,0.35)}
 
-    html, body {
-      height: 100%;
-      background: #0a0b0f;
-      color: var(--txt);
-      font-family: 'Exo 2', sans-serif;
-      font-size: 14px;
-      overflow: hidden;
-      -webkit-text-size-adjust: 100%;
-      -webkit-font-smoothing: antialiased;
-    }
+        .lang-bar{display:flex;gap:4px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none;border-bottom:1px solid rgba(255,255,255,0.04)}
+        .lang-bar::-webkit-scrollbar{display:none}
+        .lang-btn{padding:4px 10px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:transparent;color:rgba(255,255,255,0.5);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif;transition:all 0.2s}
+        .lang-btn.active{background:#E31837;color:#fff;border-color:#E31837}
 
-    /* Shell — flex column, no overflow hidden so footer stays visible */
-    #app {
-      display: flex;
-      flex-direction: column;
-      height: 100%;
-      height: 100dvh;
-    }
+        .loc-bar{padding:6px 14px;background:rgba(76,175,80,0.08);border-bottom:1px solid rgba(76,175,80,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px}
+        .loc-left{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+        .loc-dot{width:8px;height:8px;border-radius:50%;background:#4CAF50;box-shadow:0 0 6px #4CAF50;animation:pulse 2s infinite;flex-shrink:0}
+        .loc-info{min-width:0}
+        .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
+        .loc-addr{color:#fff;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+        .loc-acc{display:flex;align-items:center;gap:5px;margin-top:2px}
+        .loc-acc-pill{padding:1px 6px;border-radius:6px;font-size:9px;font-weight:700;letter-spacing:0.3px;white-space:nowrap}
+        .acc-good{background:rgba(76,175,80,0.2);color:#4CAF50;border:1px solid rgba(76,175,80,0.3)}
+        .acc-ok{background:rgba(255,193,7,0.2);color:#FFC107;border:1px solid rgba(255,193,7,0.3)}
+        .acc-poor{background:rgba(255,87,34,0.2);color:#FF5722;border:1px solid rgba(255,87,34,0.3)}
+        .loc-coords{color:rgba(255,255,255,0.3);font-size:9px;font-family:monospace;letter-spacing:0.2px}
+        .loc-source{color:rgba(255,255,255,0.25);font-size:8px;letter-spacing:0.5px;font-weight:600}
+        .loc-bar.no-gps{background:rgba(255,87,34,0.08);border-color:rgba(255,87,34,0.15)}
+        .loc-bar.no-gps .loc-dot{background:#FF5722;box-shadow:0 0 6px #FF5722}
+        .loc-bar.no-gps .loc-addr{color:#FF5722}
 
-    /* Subtle red glow bg — NOT fixed/z-index, won't block taps */
-    #app::before {
-      content: "";
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 200px;
-      background: radial-gradient(ellipse 70% 100% at 50% 0%,
-        rgba(227,24,55,0.07) 0%, transparent 100%);
-      pointer-events: none;
-      z-index: 0;
-    }
+        /* MAP PANEL */
+        #mapPanel{flex-shrink:0;position:relative;overflow:hidden;transition:height 0.35s cubic-bezier(.4,0,.2,1)}
+        #mapPanel.hidden{height:0!important}
+        #liveMap{height:100%;width:100%}
+        .map-controls{position:absolute;top:6px;right:6px;z-index:1000;display:flex;flex-direction:column;gap:4px}
+        .map-ctrl-btn{width:30px;height:30px;border-radius:8px;border:none;background:rgba(13,13,26,0.88);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);font-family:'DM Sans',sans-serif;font-weight:700}
+        .map-ctrl-btn:active{background:rgba(227,24,55,0.7)}
+        .map-mode-bar{position:absolute;bottom:6px;left:6px;z-index:1000;display:flex;gap:4px}
+        .map-mode-pill{padding:4px 10px;border-radius:8px;font-size:10px;font-weight:700;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;backdrop-filter:blur(6px);transition:all 0.2s}
+        .map-mode-pill.active{background:#E31837;color:#fff}
+        .map-mode-pill:not(.active){background:rgba(13,13,26,0.85);color:rgba(255,255,255,0.55)}
+        .leaflet-control-attribution{font-size:7px!important;opacity:0.3!important}
 
-    /* All direct children sit above the bg glow */
-    #hdr, #langBar, #chat, #sb, #chips, #micBar, #inpArea, #gpsBanner {
-      position: relative;
-      z-index: 1;
-    }
+        .chips{display:flex;gap:5px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
+        .chips::-webkit-scrollbar{display:none}
+        .chip{padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
+        .chip:active{background:rgba(255,255,255,0.1)}
 
-    /* ── HEADER ────────────────────────────────────────── */
-    #hdr {
-      flex-shrink: 0;
-      height: 54px;
-      background: var(--bg2);
-      border-bottom: 2px solid transparent;
-      border-image: linear-gradient(90deg, transparent, var(--red) 30%, var(--red) 70%, transparent) 1;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 14px;
-    }
+        .chat{flex:1;overflow-y:auto;padding:10px 10px 6px}
+        .mr{display:flex;margin-bottom:8px}.mr.u{justify-content:flex-end}.mr.a{justify-content:flex-start}
+        .av{width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px}
+        .bb{max-width:78%;padding:10px 13px;color:#fff;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+        .bb.u{background:#E31837;border-radius:14px 14px 4px 14px}
+        .bb.a{background:rgba(255,255,255,0.07);border-radius:14px 14px 14px 4px}
+        .bb img{width:100%;max-height:120px;object-fit:contain;border-radius:8px;margin-bottom:6px;display:block}
+        .proc{color:rgba(255,255,255,0.3);font-size:12px;padding:6px 40px}
 
-    .logo { display: flex; align-items: center; gap: 9px; }
+        .unit-card{background:linear-gradient(135deg,#E31837,#c41230);border-radius:14px;padding:16px;margin:8px 0;text-align:center}
+        .unit-card .unit-label{color:rgba(255,255,255,0.7);font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:4px}
+        .unit-card .unit-num{color:#fff;font-size:36px;font-weight:700;letter-spacing:2px}
+        .unit-card .unit-addr{color:rgba(255,255,255,0.8);font-size:12px;margin-top:6px}
+        .unit-card .unit-lang{display:inline-block;background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:8px;font-size:10px;color:rgba(255,255,255,0.7);margin-top:6px}
+        .anav{background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.3);border-radius:12px;padding:14px;margin:8px 0}
+        .anav-title{color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+        .anav-dot{width:6px;height:6px;border-radius:50%;background:#4CAF50;animation:pulse 1s infinite}
+        .mf{border-radius:10px;overflow:hidden;margin-bottom:10px;border:2px solid #E31837}
+        .mf iframe{display:block;border:0}
+        .anav-btns{display:flex;gap:6px}
+        .anav-btns button{flex:1;padding:10px 6px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif}
+        .bg{background:#4285F4;color:#fff}.bw{background:#33CCFF;color:#000}
 
-    .logo-icon {
-      width: 34px; height: 34px;
-      background: var(--red);
-      border-radius: 9px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px; flex-shrink: 0;
-      box-shadow: 0 0 16px rgba(227,24,55,0.5);
-    }
+        .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
+        .sb span{color:#E31837;font-size:11px;font-weight:600}
+        .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
+        .mic-bar{padding:6px 14px;display:none;align-items:center;justify-content:center;gap:8px;background:rgba(227,24,55,0.06);border-top:1px solid rgba(227,24,55,0.1)}
+        .mic-bar.on{display:flex}
+        .mic-pulse{width:8px;height:8px;border-radius:50%;background:#E31837;animation:pulse 1s infinite}
+        .mic-bar span{color:#E31837;font-size:11px;font-weight:600}
 
-    .logo-text { display: flex; flex-direction: column; line-height: 1; }
+        /* ── LIVE NAV-CAM OVERLAY ─────────────────────────── */
+        #camOverlay{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:500px;bottom:0;z-index:9999;display:none;flex-direction:column;background:#000}
+        #camOverlay.active{display:flex}
 
-    .logo-title {
-      font-family: 'Rajdhani', sans-serif;
-      font-weight: 700; font-size: 17px; letter-spacing: 0.4px; color: #fff;
-    }
+        /* Full-screen video background */
+        #camVideo{position:absolute;top:0;left:0;right:0;bottom:0;width:100%;height:100%;object-fit:cover;background:#000;z-index:0}
 
-    .logo-sub {
-      font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-      color: var(--red); font-weight: 600; margin-top: 1px;
-    }
 
-    #locBar {
-      display: flex; align-items: center; gap: 5px;
-      background: var(--bg3); border: 1px solid var(--line2);
-      border-radius: 20px; padding: 5px 10px 5px 8px;
-      max-width: 50vw; overflow: hidden;
-      transition: border-color 0.3s;
-    }
+        /* Nav step banner — top overlay */
+        #camNavBanner{position:absolute;top:0;left:0;right:0;z-index:10;padding:10px 14px;background:linear-gradient(to bottom,rgba(0,0,0,0.82),transparent);display:none;flex-direction:column;gap:4px}
+        #camNavBanner.show{display:flex}
+        .cnb-label{color:rgba(255,255,255,0.5);font-size:9px;font-weight:700;letter-spacing:1px}
+        .cnb-step{color:#fff;font-size:15px;font-weight:700;line-height:1.3;text-shadow:0 1px 4px rgba(0,0,0,0.8)}
+        .cnb-eta{color:rgba(255,255,255,0.6);font-size:11px;margin-top:2px}
 
-    #locBar.no-gps { border-color: rgba(245,166,35,0.5); }
+        /* Mini map PiP — bottom-left */
+        #camMapPip{position:absolute;bottom:130px;left:12px;z-index:10;width:120px;height:120px;border-radius:12px;overflow:hidden;border:2px solid rgba(227,24,55,0.7);box-shadow:0 4px 16px rgba(0,0,0,0.6);display:none}
+        #camMapPip.show{display:block}
+        #camPipMap{width:100%;height:100%}
 
-    .gps-dot {
-      width: 7px; height: 7px; background: var(--green);
-      border-radius: 50%; flex-shrink: 0;
-      box-shadow: 0 0 6px var(--green); animation: blink 2s infinite;
-    }
+        /* AI reply bubble — bottom overlay above controls */
+        #camAiReply{position:absolute;bottom:126px;right:12px;left:140px;z-index:10;background:rgba(0,0,0,0.72);backdrop-filter:blur(8px);border-radius:12px;padding:10px;color:#fff;font-size:12px;line-height:1.4;max-height:90px;overflow-y:auto;display:none;border:1px solid rgba(255,255,255,0.1)}
+        #camAiReply.show{display:block}
 
-    #locBar.no-gps .gps-dot {
-      background: var(--amber); box-shadow: 0 0 6px var(--amber); animation: none;
-    }
+        /* Controls bar — bottom */
+        .cam-controls-bar{position:absolute;bottom:0;left:0;right:0;z-index:10;padding:12px 14px 18px;background:linear-gradient(to top,rgba(0,0,0,0.88),transparent);display:flex;flex-direction:column;gap:8px}
+        .cam-status{color:rgba(255,255,255,0.5);font-size:10px;font-weight:600;letter-spacing:0.5px;text-align:center}
+        .cam-btn-row{display:flex;gap:8px;align-items:center}
+        .cam-snap{flex:2;padding:12px;border-radius:12px;border:none;background:#E31837;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;align-items:center;justify-content:center;gap:6px}
+        .cam-auto-toggle{flex:1;padding:12px 8px;border-radius:12px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.7);font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;text-align:center;letter-spacing:0.3px}
+        .cam-auto-toggle.on{background:rgba(227,24,55,0.2);border-color:rgba(227,24,55,0.4);color:#E31837}
 
-    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+        /* EXIT button — prominent top-right */
+        #camExitBtn{position:absolute;top:12px;right:12px;z-index:20;width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);background:rgba(0,0,0,0.6);color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);font-family:'DM Sans',sans-serif;font-weight:700;line-height:1}
+        #camExitBtn:active{background:rgba(227,24,55,0.7)}
 
-    #locAddr {
-      font-size: 10px; color: var(--txt2);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-      font-weight: 500;
-    }
+        .ib{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);flex-shrink:0}
+        .ir{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+        .ir input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
+        .snd{width:38px;height:38px;border-radius:50%;border:none;background:rgba(255,255,255,0.06);color:#fff;font-size:14px;cursor:pointer;flex-shrink:0}
+        .snd.on{background:#E31837}
+        .ar{display:flex;gap:4px}
+        .ar button{flex:1;padding:9px 4px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:2px}
+        .ar button span:first-child{font-size:15px}.ar button span:last-child{font-size:8px;font-weight:700;letter-spacing:0.2px}
+        .vb{background:#E31837;color:#fff;flex:2!important;flex-direction:row!important;gap:6px!important;justify-content:center}
+        .vb.active{background:#ff4444;animation:glow 1.5s infinite}
+        .vb span:last-child{font-size:11px!important;font-weight:700!important}
+        .scb{background:rgba(255,255,255,0.06);color:#fff}
+        .plb{background:rgba(255,255,255,0.06);color:#fff}
+        .nvb{background:rgba(227,24,55,0.15);color:#E31837}
+        .lcb{background:rgba(33,150,243,0.12);color:#2196F3}
+        .mpb{background:rgba(76,175,80,0.12);color:#4CAF50;transition:all 0.2s}
+        .mpb.on{background:rgba(76,175,80,0.3);color:#66BB6A}
 
-    /* ── GPS BANNER ─────────────────────────────────────── */
-    #gpsBanner {
-      display: none; flex-shrink: 0;
-      background: rgba(245,166,35,0.10);
-      border-bottom: 1px solid rgba(245,166,35,0.30);
-      padding: 7px 14px; font-size: 12px; color: var(--amber);
-      font-weight: 500; text-align: center; letter-spacing: 0.2px;
-    }
-
-    #gpsBanner.show { display: block; }
-
-    /* ── LANGUAGE BAR ───────────────────────────────────── */
-    #langBar {
-      flex-shrink: 0; height: 42px;
-      background: var(--bg2); border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; gap: 6px;
-      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
-      -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    }
-
-    #langBar::-webkit-scrollbar { display: none; }
-
-    #langBar button {
-      flex-shrink: 0; height: 30px; padding: 0 11px;
-      border-radius: 6px; border: 1px solid var(--line2);
-      background: var(--bg3); color: var(--txt2);
-      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
-      cursor: pointer; white-space: nowrap;
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: rgba(227,24,55,0.15);
-      transition: background 0.12s, color 0.12s;
-    }
-
-    #langBar button.active, #langBar button.sel {
-      background: var(--red); border-color: var(--red); color: #fff;
-    }
-
-    /* ── CHAT ───────────────────────────────────────────── */
-    #chat {
-      flex: 1; min-height: 0;
-      overflow-y: auto; overflow-x: hidden;
-      padding: 12px 12px 8px;
-      display: flex; flex-direction: column; gap: 10px;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: thin; scrollbar-color: var(--line2) transparent;
-    }
-
-    #chat::-webkit-scrollbar { width: 3px; }
-    #chat::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
-
-    .mr { display: flex; align-items: flex-end; gap: 7px; animation: rise 0.2s ease; }
-    @keyframes rise { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
-    .mr.u { flex-direction: row-reverse; }
-
-    .av {
-      width: 28px; height: 28px; background: var(--bg3);
-      border: 1px solid rgba(227,24,55,0.25); border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 14px; flex-shrink: 0;
-    }
-
-    .bb {
-      max-width: 80%; padding: 9px 12px; font-size: 13px;
-      line-height: 1.55; border-radius: 14px;
-      white-space: pre-wrap; word-break: break-word;
-    }
-
-    .bb img { display:block; max-width:100%; border-radius:8px; margin-bottom:5px; }
-    .bb.a { background:var(--bg3); border:1px solid var(--line); border-bottom-left-radius:4px; }
-    .bb.u { background:linear-gradient(135deg,var(--red),#c01430); border-bottom-right-radius:4px; color:#fff; }
-
-    .proc {
-      display:flex; align-items:center; gap:8px;
-      color:var(--txt3); font-size:12px; font-style:italic; padding:2px 6px;
-    }
-    .proc::before {
-      content:""; width:13px; height:13px;
-      border:2px solid var(--line2); border-top-color:var(--red);
-      border-radius:50%; animation:spin 0.65s linear infinite; flex-shrink:0;
-    }
-    @keyframes spin { to{transform:rotate(360deg)} }
-
-    /* ── STEPS BAR ──────────────────────────────────────── */
-    #sb {
-      flex-shrink: 0; background: var(--bg2);
-      border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
-      overflow-x: auto; scrollbar-width: none; display: none;
-    }
-    #sb:not(:empty) { display: block; }
-    #sb::-webkit-scrollbar { display: none; }
-
-    /* ── QUICK CHIPS ────────────────────────────────────── */
-    #chips {
-      flex-shrink: 0; height: 44px;
-      display: flex; align-items: center; gap: 6px;
-      padding: 0 10px; overflow-x: auto; overflow-y: hidden;
-      -webkit-overflow-scrolling: touch; scrollbar-width: none;
-      border-top: 1px solid var(--line); background: var(--bg2);
-    }
-    #chips::-webkit-scrollbar { display: none; }
-
-    .chip {
-      flex-shrink: 0; height: 30px; padding: 0 13px;
-      border-radius: 15px; border: 1px solid var(--line2);
-      background: var(--bg3); color: var(--txt2);
-      font-family: 'Exo 2', sans-serif; font-size: 12px; font-weight: 500;
-      cursor: pointer; white-space: nowrap;
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
-      -webkit-user-select: none; user-select: none;
-      transition: background 0.1s, border-color 0.1s, color 0.1s;
-    }
-    .chip:active { background:rgba(227,24,55,0.18); border-color:rgba(227,24,55,0.5); color:#fff; }
-
-    /* ── MIC BAR ────────────────────────────────────────── */
-    #micBar {
-      flex-shrink: 0; max-height: 0; overflow: hidden;
-      background: rgba(227,24,55,0.06);
-      display: flex; align-items: center; justify-content: center; gap: 10px;
-      transition: max-height 0.3s ease;
-    }
-    #micBar.on { max-height: 40px; border-top: 1px solid rgba(227,24,55,0.2); }
-
-    .mic-waves { display:flex; gap:3px; align-items:flex-end; height:20px; }
-    .mic-waves span { width:3px; border-radius:2px; background:var(--red); }
-    #micBar.on .mic-waves span:nth-child(1) { animation:mw 1s ease-in-out 0.00s infinite; }
-    #micBar.on .mic-waves span:nth-child(2) { animation:mw 1s ease-in-out 0.10s infinite; }
-    #micBar.on .mic-waves span:nth-child(3) { animation:mw 1s ease-in-out 0.20s infinite; }
-    #micBar.on .mic-waves span:nth-child(4) { animation:mw 1s ease-in-out 0.10s infinite; }
-    #micBar.on .mic-waves span:nth-child(5) { animation:mw 1s ease-in-out 0.00s infinite; }
-    .mic-waves span:nth-child(1),.mic-waves span:nth-child(5){height:5px}
-    .mic-waves span:nth-child(2),.mic-waves span:nth-child(4){height:10px}
-    .mic-waves span:nth-child(3){height:18px}
-    @keyframes mw { 0%,100%{transform:scaleY(.35);opacity:.5} 50%{transform:scaleY(1);opacity:1} }
-
-    #micLabel {
-      font-family: 'Rajdhani', sans-serif; font-size:11px;
-      font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--red);
-    }
-
-    /* ── INPUT FOOTER ───────────────────────────────────── */
-    #inpArea {
-      flex-shrink: 0; background: var(--bg2);
-      border-top: 1px solid var(--line);
-      padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 0px));
-      display: flex; flex-direction: column; gap: 8px;
-    }
-
-    .inp-row { display:flex; gap:7px; align-items:center; }
-
-    #inp {
-      flex: 1; height: 42px; background: var(--bg3);
-      border: 1px solid var(--line2); border-radius: 11px;
-      padding: 0 14px; color: var(--txt);
-      font-family: 'Exo 2', sans-serif;
-      /* 16px prevents iOS auto-zoom on focus */
-      font-size: 16px;
-      outline: none; caret-color: var(--red);
-      transition: border-color 0.2s;
-    }
-    #inp::placeholder { color: var(--txt3); }
-    #inp:focus { border-color: rgba(227,24,55,0.5); }
-
-    #sendBtn {
-      width: 42px; height: 42px; border-radius: 11px;
-      border: 1px solid var(--line2); background: var(--bg3);
-      color: var(--txt3); cursor: pointer; font-size: 18px;
-      display: flex; align-items: center; justify-content: center;
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: transparent;
-      transition: background 0.12s, color 0.12s, box-shadow 0.12s;
-    }
-    #sendBtn.on { background:var(--red); border-color:var(--red); color:#fff; box-shadow:0 0 14px var(--red-glow); }
-
-    /* ── ACTION BUTTONS ─────────────────────────────────── */
-    .btn-row { display:flex; gap:6px; }
-
-    .act-btn {
-      flex: 1;
-      min-height: 52px;         /* big tap target */
-      border-radius: 11px;
-      border: 1px solid var(--line2);
-      background: var(--bg3);
-      color: var(--txt2);
-      font-family: 'Rajdhani', sans-serif;
-      font-weight: 700; text-transform: uppercase;
-      cursor: pointer;
-      display: flex; flex-direction: column;
-      align-items: center; justify-content: center; gap: 3px;
-      line-height: 1;
-      /* Touch reliability */
-      touch-action: manipulation;
-      -webkit-tap-highlight-color: rgba(227,24,55,0.12);
-      -webkit-user-select: none; user-select: none;
-      transition: background 0.1s, transform 0.08s, box-shadow 0.12s;
-    }
-    .act-btn:active { transform: scale(0.93); background: rgba(255,255,255,0.05); }
-
-    .btn-icon { font-size: 20px; line-height: 1; }
-    .btn-lbl  { font-size: 9px; letter-spacing: 0.4px; color: var(--txt3); margin-top: 1px; }
-
-    #voiceBtn { flex: 1.5; border-color: rgba(227,24,55,0.28); }
-    #voiceBtn.active {
-      background: var(--red); border-color: var(--red); color: #fff;
-      animation: glow 1.8s ease-in-out infinite;
-    }
-    #voiceBtn.active .btn-lbl { color: rgba(255,255,255,0.75); }
-    @keyframes glow {
-      0%,100%{ box-shadow:0 0 14px rgba(227,24,55,0.35) }
-      50%    { box-shadow:0 0 26px rgba(227,24,55,0.65) }
-    }
-
-    #scanBtn,#photoBtn { border-color:rgba(58,141,222,0.22); }
-    #navBtn  { border-color:rgba(37,211,102,0.22); color:var(--green); }
-    #navBtn .btn-lbl { color:rgba(37,211,102,0.45); }
-    #stopBtn { border-color:rgba(227,24,55,0.22); color:var(--red); }
-    #stopBtn .btn-lbl { color:rgba(227,24,55,0.45); }
-
-    /* Hidden inputs — no stacking context interference */
-    #cameraIn, #photoIn { display:none; }
-  </style>
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+        @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(227,24,55,0.4)}50%{box-shadow:0 0 20px rgba(227,24,55,0.8)}}
+    </style>
 </head>
-
 <body>
 <div id="app">
-
-  <header id="hdr">
-    <div class="logo">
-      <div class="logo-icon">🥷</div>
-      <div class="logo-text">
-        <span class="logo-title">Ninja Co-Pilot</span>
-        <span class="logo-sub">AI Senior Driver</span>
-      </div>
+    <div class="hdr">
+        <div class="hdr-l">
+            <div class="hdr-logo">🥷</div>
+            <div><div class="hdr-t"><span>NINJA</span> CO-PILOT</div><div class="hdr-s">AI SENIOR DRIVER ASSISTANT</div></div>
+        </div>
+        <div class="hdr-r">
+            <div class="wx-badge" id="wxBadge" style="display:none">
+                <span class="wx-icon" id="wxIcon">🌤</span>
+                <div class="wx-info">
+                    <div class="wx-temp" id="wxTemp">--°C</div>
+                    <div class="wx-desc" id="wxDesc">--</div>
+                </div>
+            </div>
+            <div class="mode-badge mode-unknown" id="modeBadge">🚗 --</div>
+        </div>
     </div>
-    <div id="locBar" class="no-gps">
-      <div class="gps-dot"></div>
-      <span id="locAddr">Allow GPS to start</span>
-    </div>
-  </header>
-
-  <div id="gpsBanner">
-    📍 Please allow location access when browser prompts — needed for navigation
-  </div>
-
-  <nav id="langBar" aria-label="Language selector"></nav>
-
-  <main id="chat" role="log" aria-live="polite"></main>
-
-  <div id="sb" role="navigation" aria-label="Route steps"></div>
-
-  <div id="chips" role="toolbar" aria-label="Quick actions"></div>
-
-  <div id="micBar" role="status" aria-live="polite">
-    <div class="mic-waves">
-      <span></span><span></span><span></span><span></span><span></span>
-    </div>
-    <span id="micLabel">HANDS-FREE ACTIVE</span>
-  </div>
-
-  <footer id="inpArea">
-    <div class="inp-row">
-      <input id="inp" type="text" inputmode="text"
-        autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-        placeholder="Ask Co-Pilot…" enterkeyhint="send" aria-label="Message" />
-      <button id="sendBtn" aria-label="Send">➤</button>
+    <div class="lang-bar" id="langBar"></div>
+    <div class="loc-bar no-gps" id="locBar">
+        <div class="loc-left">
+            <div class="loc-dot"></div>
+            <div class="loc-info">
+                <div class="loc-label">YOUR LOCATION <span class="loc-source" id="locSource"></span></div>
+                <div class="loc-addr" id="locAddr">Locating...</div>
+                <div class="loc-acc" id="locAcc" style="display:none">
+                    <span class="loc-acc-pill acc-ok" id="locAccPill">± --m</span>
+                    <span class="loc-coords" id="locCoords"></span>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="btn-row">
-      <button id="voiceBtn" class="act-btn">
-        <span class="btn-icon">🎙️</span>
-        <span class="btn-lbl">TAP TO SPEAK</span>
-      </button>
-      <button id="scanBtn" class="act-btn">
-        <span class="btn-icon">📷</span>
-        <span class="btn-lbl">SCAN</span>
-      </button>
-      <button id="photoBtn" class="act-btn">
-        <span class="btn-icon">🖼️</span>
-        <span class="btn-lbl">PHOTO</span>
-      </button>
-      <button id="navBtn" class="act-btn">
-        <span class="btn-icon">🗺️</span>
-        <span class="btn-lbl">NAV</span>
-      </button>
-      <button id="stopBtn" class="act-btn">
-        <span class="btn-icon">🔇</span>
-        <span class="btn-lbl">STOP</span>
-      </button>
+    <!-- MAP PANEL: hidden by default, shows when MAP toggled or nav active -->
+    <div id="mapPanel" class="hidden" style="height:200px">
+        <div id="liveMap"></div>
+        <div class="map-controls">
+            <button class="map-ctrl-btn" id="mapZoomIn">+</button>
+            <button class="map-ctrl-btn" id="mapZoomOut">−</button>
+            <button class="map-ctrl-btn" id="mapCenter">◎</button>
+            <button class="map-ctrl-btn" id="mapClose">✕</button>
+        </div>
+        <div class="map-mode-bar">
+            <button class="map-mode-pill active" id="mpDriving">🚗 Drive</button>
+            <button class="map-mode-pill" id="mpWalking">🚶 Walk</button>
+        </div>
     </div>
-  </footer>
 
+    <div class="chips" id="chips"></div>
+    <div class="chat" id="chat"></div>
+    <div class="sb" id="sb"><span>🔊 Speaking...</span><button id="stopBtn">Stop</button></div>
+    <div class="mic-bar" id="micBar"><div class="mic-pulse"></div><span id="micLabel">HANDS-FREE MIC ACTIVE</span></div>
+    <div class="ib">
+        <div class="ir">
+            <input type="text" id="inp" placeholder="Type or speak in any language...">
+            <button class="snd" id="sendBtn">▶</button>
+        </div>
+        <div class="ar">
+            <button class="vb" id="voiceBtn"><span>🎙️</span><span>TAP TO SPEAK</span></button>
+            <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
+            <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
+            <button class="mpb" id="mapBtn"><span>🗺️</span><span>MAP</span></button>
+            <button class="lcb" id="liveCamBtn"><span>📹</span><span>LIVE</span></button>
+        </div>
+        <input type="file" id="cameraIn" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="photoIn" accept="image/*" style="display:none">
+    </div>
 </div>
 
-<input id="cameraIn" type="file" accept="image/*" capture="environment" />
-<input id="photoIn"  type="file" accept="image/*" />
+<!-- ── LIVE NAV-CAM OVERLAY ─────────────────────── -->
+<div id="camOverlay">
+    <!-- Full-screen camera feed -->
+    <video id="camVideo" autoplay muted playsinline></video>
 
-<script>
-  // Show GPS banner if not acquired after 4 seconds
-  (function () {
-    var banner  = document.getElementById("gpsBanner");
-    var locBar  = document.getElementById("locBar");
-    var timer   = setTimeout(function () {
-      if (locBar.classList.contains("no-gps")) banner.classList.add("show");
-    }, 4000);
-    var obs = new MutationObserver(function () {
-      if (!locBar.classList.contains("no-gps")) {
-        banner.classList.remove("show");
-        clearTimeout(timer);
-        obs.disconnect();
-      }
-    });
-    obs.observe(locBar, { attributes: true, attributeFilter: ["class"] });
-  })();
-</script>
+    <!-- EXIT button (always visible top-right) -->
+    <button id="camExitBtn" title="Exit camera">✕</button>
 
-<script src="/static/ai-driver-copilot.js"></script>
+    <!-- Nav step banner (top) — shows current nav step -->
+    <div id="camNavBanner">
+        <div class="cnb-label">🧭 NEXT STEP</div>
+        <div class="cnb-step" id="camNavStep">Waiting for navigation...</div>
+        <div class="cnb-eta" id="camNavEta"></div>
+    </div>
+
+    <!-- Mini map PiP (bottom-left) -->
+    <div id="camMapPip">
+        <div id="camPipMap"></div>
+    </div>
+
+    <!-- AI reply bubble (bottom-right) -->
+    <div id="camAiReply">Tap 📸 to analyze what the camera sees...</div>
+
+    <!-- Bottom controls bar -->
+    <div class="cam-controls-bar">
+        <div class="cam-status" id="camStatus">📹 LIVE — Point at road sign, block, or parcel</div>
+        <div class="cam-btn-row">
+            <button class="cam-snap" id="camSnap">📸 Analyze</button>
+            <button class="cam-auto-toggle" id="camAutoToggle">🔄 AUTO<br>OFF</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="ai-driver-copilot.js"></script>
 </body>
 </html>
