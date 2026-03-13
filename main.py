@@ -106,7 +106,7 @@ def verify():
             result["google_places"] = {"ok": False, "error": "Missing API key"}
         else:
             resp = requests.get(
-                "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                "https://places.googleapis.com/v1/places:searchText",
                 params={
                     "query": "Haidilao Jurong East",
                     "key": GOOGLE_PLACES_API_KEY
