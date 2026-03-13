@@ -12,7 +12,7 @@ WEATHER_API_KEY = os.environ.get("WEATHER_API_KEY", "")
 GOOGLE_PLACES_API_KEY = os.environ.get("GOOGLE_PLACES_API_KEY", "")
 ONEMAP_EMAIL = os.environ.get("ONEMAP_EMAIL", "")
 ONEMAP_PASSWORD = os.environ.get("ONEMAP_PASSWORD", "")
-AI_PROVIDER = os.environ.get("AI_PROVIDER", "claude").lower()
+AI_PROVIDER = os.environ.get("AI_PROVIDER", "openai").lower()
 
 _onemap_token = None
 
