@@ -482,7 +482,7 @@ def route():
                 modifier = maneuver.get("modifier", "")
                 m_type = maneuver.get("type", "")
                 loc = maneuver.get("location", [None, None])
-                text = build_instruction(m_type, modifier, name, distance)
+                text = build_instruction(m_type, modifier, name, distance, mode)
                 if text:
                     steps.append({
                         "text": text,
@@ -509,23 +509,40 @@ def route():
         return jsonify({"error": str(e), "steps": []})
 
 
-def build_instruction(m_type, modifier, name, distance):
+def build_instruction(m_type, modifier, name, distance, mode="driving"):
     dist_str = f"{round(distance)}m" if distance < 1000 else f"{round(distance / 1000, 1)}km"
     road = f" onto {name}" if name else ""
-    if m_type == "depart": return f"Start driving{road} for {dist_str}"
-    elif m_type == "arrive": return f"Arrived at destination"
-    elif m_type == "turn": return f"Turn {modifier}{road}, continue {dist_str}"
-    elif m_type == "new name": return f"Continue{road} for {dist_str}"
-    elif m_type == "merge": return f"Merge {modifier}{road} for {dist_str}"
-    elif m_type == "fork": return f"Keep {modifier} at fork{road} for {dist_str}"
-    elif m_type in ("roundabout", "rotary"): return f"Enter roundabout, exit{road}"
-    elif m_type == "end of road": return f"Turn {modifier} at end of road{road}"
-    elif m_type == "continue": return f"Continue straight{road} for {dist_str}"
-    elif m_type in ("on ramp", "off ramp"): return f"Take ramp {modifier}{road}"
-    elif m_type == "notification": return None
+
+    start_verb = "walking" if mode == "walking" else "driving"
+    move_verb = "Walk" if mode == "walking" else "Drive"
+
+    if m_type == "depart":
+        return f"Start {start_verb}{road} for {dist_str}"
+    elif m_type == "arrive":
+        return "Arrived at destination"
+    elif m_type == "turn":
+        return f"Turn {modifier}{road}, continue {dist_str}"
+    elif m_type == "new name":
+        return f"Continue{road} for {dist_str}"
+    elif m_type == "merge":
+        return f"Merge {modifier}{road} for {dist_str}"
+    elif m_type == "fork":
+        return f"Keep {modifier} at fork{road} for {dist_str}"
+    elif m_type in ("roundabout", "rotary"):
+        return f"Enter roundabout, exit{road}"
+    elif m_type == "end of road":
+        return f"Turn {modifier} at end of road{road}"
+    elif m_type == "continue":
+        return f"Continue straight{road} for {dist_str}"
+    elif m_type in ("on ramp", "off ramp"):
+        return f"Take ramp {modifier}{road}"
+    elif m_type == "notification":
+        return None
     else:
-        if modifier: return f"Go {modifier}{road} for {dist_str}"
-        elif name: return f"Continue on {name} for {dist_str}"
+        if modifier:
+            return f"Go {modifier}{road} for {dist_str}"
+        elif name:
+            return f"Continue on {name} for {dist_str}"
     return None
 
 
