@@ -46,33 +46,29 @@ def verify():
     result = {}
 
     # Claude
+        # Google Places API (New)
     try:
-        if not ANTHROPIC_API_KEY:
-            result["claude"] = {"ok": False, "error": "Missing API key"}
+        if not GOOGLE_PLACES_API_KEY:
+            result["google_places"] = {"ok": False, "error": "Missing API key"}
         else:
             resp = requests.post(
-                "https://api.anthropic.com/v1/messages",
+                "https://places.googleapis.com/v1/places:searchText",
                 headers={
-                    "x-api-key": ANTHROPIC_API_KEY,
-                    "anthropic-version": "2023-06-01",
-                    "content-type": "application/json"
+                    "Content-Type": "application/json",
+                    "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+                    "X-Goog-FieldMask": "places.displayName,places.formattedAddress,places.location"
                 },
-                json={
-                    "model": "claude-sonnet-4-5-20250929",
-                    "max_tokens": 20,
-                    "messages": [{"role": "user", "content": "Hi"}]
-                },
+                json={"textQuery": "Haidilao Jurong East"},
                 timeout=20
             )
             data = resp.json()
-            result["claude"] = {
-                "ok": resp.status_code == 200,
+            result["google_places"] = {
+                "ok": resp.status_code == 200 and "places" in data,
                 "status": resp.status_code,
                 "preview": str(data)[:200]
             }
     except Exception as e:
-        result["claude"] = {"ok": False, "error": str(e)}
-
+        result["google_places"] = {"ok": False, "error": str(e)}
     # OpenAI
     try:
         if not OPENAI_API_KEY:
