@@ -1506,7 +1506,21 @@ function resolveBestDestination(rawAddr, cb) {
         rainAlertShownForRoute = false; currentWeatherInfo = null;
         removeArrivalCard(); removeRainCard();
         highlightActiveStep();
-        speakCurrentStepIfNeeded(true);
+
+var totalM = Math.round(route.total_distance || 0);
+var totalMin = Math.max(1, Math.round((route.total_duration || 0) / 60));
+
+if (routingMode === "walking") {
+    detectLang("Walking route loaded. About " + totalMin + " minutes.");
+    speak("Walking route loaded. About " + totalMin + " minutes, " + totalM + " meters.");
+} else {
+    detectLang("Driving route loaded. About " + totalMin + " minutes.");
+    speak("Driving route loaded. About " + totalMin + " minutes.");
+}
+
+setTimeout(function () {
+    speakCurrentStepIfNeeded(true);
+}, 400);
 
         // Show map automatically when nav starts
         showMap();
