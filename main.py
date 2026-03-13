@@ -41,7 +41,127 @@ def test():
         "onemap": bool(os.environ.get("ONEMAP_EMAIL")),
         "weather": bool(os.environ.get("WEATHER_API_KEY"))
     }
+@app.route("/api/verify")
+def verify():
+    result = {}
 
+    # Claude
+    try:
+        if not ANTHROPIC_API_KEY:
+            result["claude"] = {"ok": False, "error": "Missing API key"}
+        else:
+            resp = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": ANTHROPIC_API_KEY,
+                    "anthropic-version": "2023-06-01",
+                    "content-type": "application/json"
+                },
+                json={
+                    "model": "claude-3-haiku-20240307",
+                    "max_tokens": 20,
+                    "messages": [{"role": "user", "content": "Hi"}]
+                },
+                timeout=20
+            )
+            data = resp.json()
+            result["claude"] = {
+                "ok": resp.status_code == 200,
+                "status": resp.status_code,
+                "preview": str(data)[:200]
+            }
+    except Exception as e:
+        result["claude"] = {"ok": False, "error": str(e)}
+
+    # OpenAI
+    try:
+        if not OPENAI_API_KEY:
+            result["openai"] = {"ok": False, "error": "Missing API key"}
+        else:
+            resp = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {OPENAI_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": "Hi"}],
+                    "max_tokens": 20
+                },
+                timeout=20
+            )
+            data = resp.json()
+            result["openai"] = {
+                "ok": resp.status_code == 200,
+                "status": resp.status_code,
+                "preview": str(data)[:200]
+            }
+    except Exception as e:
+        result["openai"] = {"ok": False, "error": str(e)}
+
+    # Google Places
+    try:
+        if not GOOGLE_PLACES_API_KEY:
+            result["google_places"] = {"ok": False, "error": "Missing API key"}
+        else:
+            resp = requests.get(
+                "https://maps.googleapis.com/maps/api/place/textsearch/json",
+                params={
+                    "query": "Haidilao Jurong East",
+                    "key": GOOGLE_PLACES_API_KEY
+                },
+                timeout=20
+            )
+            data = resp.json()
+            result["google_places"] = {
+                "ok": resp.status_code == 200 and data.get("status") in ("OK", "ZERO_RESULTS"),
+                "status": resp.status_code,
+                "api_status": data.get("status"),
+                "preview": str(data)[:200]
+            }
+    except Exception as e:
+        result["google_places"] = {"ok": False, "error": str(e)}
+
+    # Weather
+    try:
+        if not WEATHER_API_KEY:
+            result["weather"] = {"ok": False, "error": "Missing API key"}
+        else:
+            resp = requests.get(
+                "https://api.weatherapi.com/v1/current.json",
+                params={"key": WEATHER_API_KEY, "q": "Singapore"},
+                timeout=20
+            )
+            data = resp.json()
+            result["weather"] = {
+                "ok": resp.status_code == 200 and "current" in data,
+                "status": resp.status_code,
+                "preview": str(data)[:200]
+            }
+    except Exception as e:
+        result["weather"] = {"ok": False, "error": str(e)}
+
+    # OneMap
+    try:
+        if not ONEMAP_EMAIL or not ONEMAP_PASSWORD:
+            result["onemap"] = {"ok": False, "error": "Missing email/password"}
+        else:
+            resp = requests.post(
+                "https://www.onemap.gov.sg/api/auth/post/getToken",
+                json={"email": ONEMAP_EMAIL, "password": ONEMAP_PASSWORD},
+                timeout=20
+            )
+            data = resp.json()
+            result["onemap"] = {
+                "ok": resp.status_code == 200 and bool(data.get("access_token") or data.get("token")),
+                "status": resp.status_code,
+                "preview": str(data)[:200]
+            }
+    except Exception as e:
+        result["onemap"] = {"ok": False, "error": str(e)}
+
+    return jsonify(result)
 
 # =========================================================
 # ONEMAP TOKEN
