@@ -1295,29 +1295,201 @@
     }
 
     // ── Routing ────────────────────────────────────────────
-    function fetchRoute(destAddr, cb) {
-        if (!gpsPos) { cb("No GPS"); return; }
+    // ── Smart Singapore address cleanup / fallback ─────────
+function cleanDeliveryAddress(rawText) {
+    if (!rawText) return "";
 
-        fetch("/api/address-to-latlng?address=" + encodeURIComponent(destAddr))
-        .then(function (r) { return r.json(); })
-        .then(function (g) {
-            if (!g.lat) { cb("Address not found"); return; }
+    var text = String(rawText);
 
-            var mode = routingMode; // driving or walking based on transport detect
-            fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng
-                + "&to_lat=" + g.lat + "&to_lng=" + g.lng + "&mode=" + mode)
-            .then(function (r) { return r.json(); })
-            .then(function (rt) {
-                if (rt && !rt.error) {
-                    rt.dest_lat = g.lat; rt.dest_lng = g.lng;
-                    rt.dest_display = g.display || destAddr;
+    // remove phone numbers
+    text = text.replace(/\b(?:\+?65[-\s]?)?\d{8}\b/g, " ");
+
+    // remove unit patterns like #14, #03-122, #12-345
+    text = text.replace(/#\s*\d{1,3}(?:-\d{1,4})?/gi, " ");
+
+    // remove common words that confuse routing
+    text = text.replace(/\b(unit|floor|level|lvl|recipient|name|attn|attention)\b/gi, " ");
+
+    // normalize punctuation / spaces
+    text = text.replace(/[\n\r,;]+/g, " ");
+    text = text.replace(/\s+/g, " ").trim();
+
+    return text;
+}
+
+function extractSingaporeAddressParts(rawText) {
+    var text = cleanDeliveryAddress(rawText || "");
+    var result = {
+        postal: "",
+        blockStreet: "",
+        cleaned: "",
+        unit: ""
+    };
+
+    // capture postal code
+    var postalMatch = text.match(/\b\d{6}\b/);
+    if (postalMatch) result.postal = postalMatch[0];
+
+    // capture block + street
+    var blockStreetMatch = text.match(
+        /\b\d{1,4}\s+[A-Za-z0-9 ]+(?:Street|St|Road|Rd|Avenue|Ave|Drive|Dr|Crescent|Close|Lane|Lorong|Jalan|East|West|North|South)\b(?:\s*\d{1,3})?/i
+    );
+    if (blockStreetMatch) {
+        result.blockStreet = blockStreetMatch[0].replace(/\s+/g, " ").trim();
+    }
+
+    result.cleaned = result.blockStreet;
+    if (result.postal) {
+        result.cleaned += (result.cleaned ? ", Singapore " : "Singapore ") + result.postal;
+    }
+
+    result.cleaned = result.cleaned.trim();
+    return result;
+}
+
+function scoreAddressCandidate(item, targetPostal, targetBlockStreet) {
+    var score = 0;
+    var display = String(
+        item.display || item.address || item.ROAD_NAME || item.road || ""
+    ).toLowerCase();
+
+    var postal = String(
+        item.POSTAL || item.postal || ""
+    ).trim();
+
+    var blk = String(item.BLK_NO || item.blk_no || "").trim();
+    var road = String(item.ROAD_NAME || item.road_name || item.road || "").trim();
+    var composed = (blk + " " + road).toLowerCase().trim();
+
+    if (targetPostal && postal === targetPostal) score += 100;
+    if (targetBlockStreet && composed.indexOf(targetBlockStreet.toLowerCase()) >= 0) score += 70;
+    if (targetBlockStreet && display.indexOf(targetBlockStreet.toLowerCase()) >= 0) score += 50;
+
+    return score;
+}
+
+function chooseBestGeocodeCandidate(results, targetPostal, targetBlockStreet) {
+    if (!results || !results.length) return null;
+
+    var scored = results.map(function (item) {
+        return {
+            item: item,
+            score: scoreAddressCandidate(item, targetPostal, targetBlockStreet)
+        };
+    });
+
+    scored.sort(function (a, b) { return b.score - a.score; });
+    return scored[0].item;
+}
+
+function geocodeAddressCandidates(query, cb) {
+    fetch("/api/address-to-latlng?address=" + encodeURIComponent(query))
+    .then(function (r) { return r.json(); })
+    .then(function (g) {
+        cb(null, g);
+    })
+    .catch(function (e) {
+        cb(e.message);
+    });
+}
+
+function resolveBestDestination(rawAddr, cb) {
+    var parsed = extractSingaporeAddressParts(rawAddr || "");
+    var tries = [];
+
+    // best priority: postal
+    if (parsed.postal) tries.push(parsed.postal);
+
+    // second: cleaned full block + street + postal
+    if (parsed.cleaned && tries.indexOf(parsed.cleaned) < 0) tries.push(parsed.cleaned);
+
+    // third: block + street only
+    if (parsed.blockStreet && tries.indexOf(parsed.blockStreet) < 0) tries.push(parsed.blockStreet);
+
+    // last: raw cleaned text
+    var rawClean = cleanDeliveryAddress(rawAddr || "");
+    if (rawClean && tries.indexOf(rawClean) < 0) tries.push(rawClean);
+
+    function nextTry(i) {
+        if (i >= tries.length) {
+            cb("Address not found");
+            return;
+        }
+
+        geocodeAddressCandidates(tries[i], function (err, g) {
+            if (err || !g) {
+                nextTry(i + 1);
+                return;
+            }
+
+            // single best result returned by backend
+            if (g.lat && g.lng) {
+                cb(null, {
+                    lat: g.lat,
+                    lng: g.lng,
+                    display: g.display || tries[i],
+                    query_used: tries[i],
+                    cleaned_input: parsed.cleaned || rawClean
+                });
+                return;
+            }
+
+            // if backend ever returns multiple candidates
+            if (g.results && g.results.length) {
+                var best = chooseBestGeocodeCandidate(g.results, parsed.postal, parsed.blockStreet);
+                if (best) {
+                    cb(null, {
+                        lat: Number(best.lat || best.LATITUDE),
+                        lng: Number(best.lng || best.LONGITUDE),
+                        display: best.display || best.ADDRESS || tries[i],
+                        query_used: tries[i],
+                        cleaned_input: parsed.cleaned || rawClean
+                    });
+                    return;
                 }
-                cb((rt.error && !rt.steps.length) ? rt.error : null, rt);
-            })
-            .catch(function (e) { cb(e.message); });
+            }
+
+            nextTry(i + 1);
+        });
+    }
+
+    nextTry(0);
+}
+    function fetchRoute(destAddr, cb) {
+    if (!gpsPos) { cb("No GPS"); return; }
+
+    resolveBestDestination(destAddr, function (geoErr, g) {
+        if (geoErr || !g || g.lat == null || g.lng == null) {
+            cb("Address not found");
+            return;
+        }
+
+        var mode = routingMode;
+
+        fetch("/api/route?from_lat=" + encodeURIComponent(gpsPos.lat) +
+              "&from_lng=" + encodeURIComponent(gpsPos.lng) +
+              "&to_lat=" + encodeURIComponent(g.lat) +
+              "&to_lng=" + encodeURIComponent(g.lng) +
+              "&mode=" + encodeURIComponent(mode))
+        .then(function (r) { return r.json(); })
+        .then(function (rt) {
+            if (rt && !rt.error) {
+                rt.dest_lat = g.lat;
+                rt.dest_lng = g.lng;
+                rt.dest_display = g.display || destAddr;
+                rt.cleaned_input = g.cleaned_input || destAddr;
+                rt.query_used = g.query_used || destAddr;
+            }
+
+            if (rt && rt.steps && rt.steps.length) {
+                cb(null, rt);
+            } else {
+                cb((rt && rt.error) || "Route not found", rt);
+            }
         })
         .catch(function (e) { cb(e.message); });
-    }
+    });
+}
 
     function metersBetween(lat1, lng1, lat2, lng2) {
         var R = 6371000, toRad = function (d) { return d * Math.PI / 180; };
