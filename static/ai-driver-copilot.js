@@ -597,7 +597,8 @@
         if (!step) return;
 
         camNavBanner.classList.add("show");
-        camNavStep.textContent = tuneReplyByLanguage(step.text || "");
+        var fixedText = formatStepTextForMode(step, routingMode);
+        camNavStep.textContent = tuneReplyByLanguage(fixedText || "");
 
         // ETA line
         if (camNavEta) {
@@ -1946,6 +1947,7 @@ setTimeout(function () {
     // Map routing mode pills
     if (mpDriving) {
     mpDriving.addEventListener("click", function () {
+        manualRoutingMode = true;
         routingMode = "driving";
         setMapModePill("driving");
 
@@ -1964,7 +1966,8 @@ setTimeout(function () {
     });
 }
     if (mpWalking) {
-    mpWalking.addEventListener("click", function () {
+   mpWalking.addEventListener("click", function () {
+        manualRoutingMode = true;
         routingMode = "walking";
         setMapModePill("walking");
 
@@ -2009,7 +2012,7 @@ setTimeout(function () {
     if (stopBtnEl) stopBtnEl.addEventListener("click", stopSpeak);
 
     initGPS();
-
+    setMapModePill(routingMode);
     var mode = useRecorder ? "(recording mode)" : "(voice mode)";
     addBubble("assistant",
         uiText("ready") + " " + mode + ".\n" +
