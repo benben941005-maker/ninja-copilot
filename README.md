@@ -1,214 +1,246 @@
+# 🚚 AI Senior Driver Copilot
 
-# Ninja Van AI Driver Copilot 🚚🤖
+> An AI-powered last-mile delivery assistant that guides drivers with voice AI, computer vision, smart navigation, and automated customer communication.
 
-AI-powered delivery assistant designed for **Ninja Van drivers**.  
-This project demonstrates how artificial intelligence can assist drivers with navigation, parcel scanning, voice commands, and smart routing.
-
-Built as an **NTU Data Science & AI Capstone Project**.
+![Python](https://img.shields.io/badge/Python-3.11-blue) ![FastAPI](https://img.shields.io/badge/FastAPI-0.110-green) ![Claude AI](https://img.shields.io/badge/Claude-AI-orange) ![Docker](https://img.shields.io/badge/Docker-Ready-blue) ![GCP](https://img.shields.io/badge/GCP-Cloud%20Run-red)
 
 ---
 
-# Project Vision
+## 📋 Project Overview
 
-Create a **Tesla‑style AI copilot for delivery drivers** that helps them:
+This capstone project demonstrates how **Generative AI, Computer Vision, Voice AI, and Automation** can transform last-mile delivery logistics.
 
-• Navigate faster  
-• Reduce delivery time  
-• Automate parcel handling  
-• Communicate with customers automatically  
+The **AI Senior Driver Copilot** acts as a digital companion for delivery drivers, providing:
 
-The goal is to improve **last‑mile logistics efficiency** using AI.
-
----
-
-# Core Features
-
-## 📍 GPS Driver Navigation
-- Detects driver location automatically
-- Calculates optimal route to destination
-- Turn‑by‑turn navigation instructions
-
-## 🎤 Always‑On Voice Assistant
-Hands‑free driver interaction.
-
-Example commands:
-- “Navigate to Jurong Point”
-- “Nearest toilet”
-- “Nearest petrol station”
-
-## 🧠 AI Navigation Assistant
-Uses LLM to give short actionable instructions like:
-
-START DRIVE  
-TURN LEFT  
-GO STRAIGHT 300M
-
-## 📦 Parcel Label OCR
-Driver can scan parcel labels using camera.
-
-AI extracts:
-- Address
-- Postal code
-- Recipient
-- Phone number
-
-## 📷 Street Recognition (AI Vision)
-Driver can point camera at buildings to detect:
-- street names
-- building numbers
-- nearby landmarks
-
-## ☔ Weather Awareness
-Detects rain conditions and can warn driver about delays.
-
-## 💬 Customer ETA Messaging
-When driver is **5 minutes away**, system can automatically notify customer via WhatsApp.
-
-## 🚀 Smart Route Planning
-Future version includes:
-
-- multi‑parcel route optimization
-- delivery clustering
-- ETA prediction
+- 🎙️ **Voice AI** — Hands-free interaction via speech recognition
+- 📦 **Parcel OCR** — Scan labels to extract addresses automatically
+- 🗺️ **Smart Navigation** — OneMap + Google Places routing for Singapore
+- 🌦️ **Weather Alerts** — Real-time weather-based delivery warnings
+- 📱 **Customer Notifications** — Automated ETA messaging
+- 🤖 **AI Assistant** — Claude-powered delivery guidance chat
 
 ---
 
-# System Architecture
+## 🏗️ Architecture
 
-Driver Phone  
-↓  
-Web App (HTML + JS)  
-↓  
-Flask Backend (Python)  
-↓  
-AI APIs
-
-Services used:
-
-• OpenAI / Claude (AI assistant)  
-• OneMap.sg (Singapore geocoding)  
-• OSRM (routing engine)  
-• WeatherAPI (weather detection)
-
----
-
-# Tech Stack
-
-Frontend
-- HTML
-- JavaScript
-- Web Speech API
-- Camera API
-
-Backend
-- Python
-- Flask
-
-AI
-- OpenAI GPT‑4o
-- Claude Sonnet
-
-Maps
-- OneMap.sg
-- OpenStreetMap
-- OSRM
-
-Deployment
-- Docker
-- Google Cloud Run
-- GitHub Actions CI/CD
+```
+┌─────────────────────────────────────────────────┐
+│              Mobile Web Frontend                │
+│         (HTML5 + CSS3 + Vanilla JS)             │
+└──────────────────┬──────────────────────────────┘
+                   │ REST API
+┌──────────────────▼──────────────────────────────┐
+│           FastAPI Backend (Python)              │
+│  ┌──────────┐ ┌──────────┐ ┌─────────────────┐ │
+│  │ /chat    │ │ /ocr     │ │ /navigation     │ │
+│  │ Claude   │ │ GPT-4V   │ │ OneMap + Google │ │
+│  └──────────┘ └──────────┘ └─────────────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌─────────────────┐ │
+│  │ /weather │ │ /voice   │ │ /notify         │ │
+│  │ WeatherAPI│ │ Whisper  │ │ Auto-messaging  │ │
+│  └──────────┘ └──────────┘ └─────────────────┘ │
+└──────────────────┬──────────────────────────────┘
+                   │
+┌──────────────────▼──────────────────────────────┐
+│              Google Cloud Run                   │
+│         Docker Container + CI/CD                │
+└─────────────────────────────────────────────────┘
+```
 
 ---
 
-# Deployment Architecture
+## 🚀 Quick Start
 
-GitHub Repository  
-↓  
-GitHub Actions CI/CD  
-↓  
-Docker Build  
-↓  
-Google Cloud Run  
-↓  
-Public Web App
+### Prerequisites
+- Python 3.11+
+- Docker & Docker Compose
+- API Keys (see Environment Variables)
 
----
+### Local Development
 
-# How To Run Locally
+```bash
+# 1. Clone the repository
+git clone https://github.com/YOUR_USERNAME/ai-driver-copilot.git
+cd ai-driver-copilot
 
-Install dependencies
+# 2. Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys
 
+# 3. Install dependencies
+cd backend
 pip install -r requirements.txt
 
-Run server
+# 4. Run the backend
+uvicorn main:app --reload --port 8000
 
-python main.py
+# 5. Open frontend
+open frontend/index.html
+```
 
-Open browser
+### Docker Deployment
 
-http://localhost:8080
+```bash
+# Build and run with Docker Compose
+docker-compose up --build
 
----
-
-# Environment Variables
-
-These are configured using **GitHub Secrets** for deployment.
-
-ANTHROPIC_API_KEY  
-OPENAI_API_KEY  
-GOOGLE_PLACES_API_KEY  
-ONEMAP_EMAIL  
-ONEMAP_PASSWORD  
-WEATHER_API_KEY
+# Access at http://localhost:8000
+```
 
 ---
 
-# Example Driver Workflow
+## 🔑 Environment Variables
 
-1️⃣ Driver opens AI Copilot on phone
+```env
+# AI Models
+ANTHROPIC_API_KEY=your_key_here
+OPENAI_API_KEY=your_key_here
 
-2️⃣ GPS detects driver location
+# Singapore Maps (OneMap)
+ONEMAP_EMAIL=your_email_here
+ONEMAP_PASSWORD=your_password_here
 
-3️⃣ Driver says:
-“Navigate to IMM Mall”
+# Google Services
+GOOGLE_PLACES_API_KEY=your_key_here
+GCP_PROJECT_ID=your_project_id
 
-4️⃣ AI finds nearest IMM
-
-5️⃣ Turn‑by‑turn navigation starts
-
-6️⃣ Driver scans parcel label
-
-7️⃣ AI extracts delivery address
-
-8️⃣ Customer receives ETA notification
-
----
-
-# Future Improvements
-
-• Driver fatigue detection  
-• Traffic prediction AI  
-• Delivery time forecasting  
-• Parcel sorting automation  
-• Warehouse AI integration
+# Weather
+WEATHER_API_KEY=your_key_here
+```
 
 ---
 
-# Capstone Project Goal
+## 📁 Project Structure
 
-Demonstrate how **AI can transform last‑mile logistics** by assisting delivery drivers with:
-
-navigation  
-parcel processing  
-customer communication  
-
-This system shows a **prototype AI copilot for logistics companies like Ninja Van**.
+```
+ai-driver-copilot/
+├── backend/
+│   ├── main.py                 # FastAPI app entry point
+│   ├── requirements.txt        # Python dependencies
+│   ├── Dockerfile              # Backend container
+│   ├── routes/
+│   │   ├── chat.py             # Claude AI assistant
+│   │   ├── ocr.py              # Parcel label scanning (GPT-4 Vision)
+│   │   ├── navigation.py       # OneMap + Google Places routing
+│   │   ├── weather.py          # Weather monitoring
+│   │   ├── voice.py            # Whisper speech recognition
+│   │   └── notifications.py    # Customer ETA messaging
+│   └── utils/
+│       ├── onemap_auth.py      # OneMap token management
+│       └── logger.py           # Logging utilities
+├── frontend/
+│   └── index.html              # Mobile web app (single file)
+├── .github/
+│   └── workflows/
+│       └── deploy.yml          # CI/CD to Google Cloud Run
+├── docker-compose.yml
+├── .env.example
+└── README.md
+```
 
 ---
 
-# Author
+## 🤖 AI Features
 
-NTU Data Science & AI Student
+### 1. Claude AI Driver Assistant
+Drivers can ask questions in natural language:
+- *"What's the best way to access Block 123?"*
+- *"Customer is not home, what should I do?"*
+- *"How do I handle a damaged parcel?"*
 
-Capstone Project:  
-**AI Driver Copilot for Logistics**
+### 2. Parcel Label OCR (GPT-4 Vision)
+- Take a photo of the parcel label
+- AI extracts: recipient name, address, unit number, postal code
+- Auto-fills navigation destination
+
+### 3. Voice Interaction (Whisper)
+- Record voice commands while driving
+- Transcribed and sent to Claude AI
+- Hands-free operation
+
+### 4. Singapore Navigation (OneMap)
+- Search Singapore addresses with postal codes
+- Integrated with OneMap routing API
+- Google Places for POI details
+
+### 5. Weather Monitoring
+- Real-time Singapore weather
+- Automatic delay alerts for heavy rain
+- Suggested shelter locations
+
+### 6. Customer Notifications
+- Auto-generate ETA messages
+- Suggested message templates
+- Copy-to-send for WhatsApp/SMS
+
+---
+
+## 📡 API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/chat` | Send message to Claude AI |
+| POST | `/api/ocr` | Scan parcel label image |
+| POST | `/api/voice` | Transcribe voice recording |
+| GET | `/api/navigation/search` | Search address on OneMap |
+| GET | `/api/navigation/route` | Get route between two points |
+| GET | `/api/weather` | Get current weather |
+| POST | `/api/notify/generate` | Generate customer notification |
+| GET | `/health` | Health check |
+
+---
+
+## 🌍 Deployment (Google Cloud Run)
+
+The project uses GitHub Actions for automated CI/CD to Google Cloud Run.
+
+**GitHub Secrets required:**
+- `GCP_PROJECT_ID`
+- `GCP_SA_KEY`
+- `ANTHROPIC_API_KEY`
+- `OPENAI_API_KEY`
+- `GOOGLE_PLACES_API_KEY`
+- `ONEMAP_EMAIL`
+- `ONEMAP_PASSWORD`
+- `WEATHER_API_KEY`
+
+Push to `main` branch triggers automatic deployment.
+
+---
+
+## 🔮 Future Expansion: Multi-Agent Control Tower
+
+```
+┌─────────────────────────────────────────┐
+│        AI Logistics Control Tower       │
+│                                         │
+│  Agent 1: Demand Forecasting            │
+│  Agent 2: Route Optimization            │
+│  Agent 3: Warehouse Operations          │
+│  Agent 4: Customer Support              │
+│  Agent 5: Pricing Optimization          │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 👨‍💻 Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| AI Assistant | Anthropic Claude (claude-sonnet-4-20250514) |
+| OCR / Vision | OpenAI GPT-4 Vision |
+| Voice | OpenAI Whisper |
+| Backend | Python FastAPI |
+| Maps | OneMap Singapore + Google Places |
+| Weather | WeatherAPI |
+| Frontend | HTML5 + CSS3 + Vanilla JS |
+| Container | Docker |
+| Cloud | Google Cloud Run |
+| CI/CD | GitHub Actions |
+
+---
+
+## 📄 License
+
+MIT License — Built as part of AI/ML Capstone Project
