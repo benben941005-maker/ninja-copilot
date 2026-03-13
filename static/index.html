@@ -1,246 +1,743 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0a0b0f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Ninja Co-Pilot</title>
 
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet" />
 
-<title>Ninja Co-Pilot</title>
+  <style>
+    /* ─── RESET & BASE ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-<style>
+    :root {
+      --red:      #E31837;
+      --red-dim:  #a01028;
+      --red-glow: rgba(227,24,55,0.20);
+      --bg:       #0a0b0f;
+      --bg2:      #11131a;
+      --bg3:      #181c26;
+      --line:     rgba(255,255,255,0.07);
+      --line2:    rgba(255,255,255,0.12);
+      --txt:      #e8eaf0;
+      --txt2:     rgba(232,234,240,0.55);
+      --txt3:     rgba(232,234,240,0.30);
+      --green:    #25D366;
+      --blue:     #3a8dde;
+      --amber:    #f5a623;
+      --header-h: 56px;
+      --lang-h:   44px;
+      --loc-h:    38px;
+      --chips-h:  46px;
+      --mic-h:    40px;
+      --inp-h:    62px;
+      --safe-bot: env(safe-area-inset-bottom, 0px);
+    }
 
-body{
-background:#0d0d1a;
-color:white;
-font-family:Arial;
-margin:0;
-}
+    html, body {
+      height: 100%; height: 100dvh;
+      background: var(--bg);
+      color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
 
-.header{
-padding:14px;
-background:#111;
-font-weight:bold;
-font-size:18px;
-}
+    /* ─── GRID SHELL ───────────────────────────────────────── */
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%; height: 100dvh;
+      position: relative;
+    }
 
-.chat{
-height:60vh;
-overflow:auto;
-padding:10px;
-}
+    /* ─── SCANLINE OVERLAY ─────────────────────────────────── */
+    #app::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0,0,0,0.04) 3px,
+        rgba(0,0,0,0.04) 4px
+      );
+      pointer-events: none;
+      z-index: 1000;
+    }
 
-.msg{
-margin:8px 0;
-padding:10px;
-border-radius:10px;
-max-width:80%;
-}
+    /* ─── HEADER ───────────────────────────────────────────── */
+    #hdr {
+      height: var(--header-h);
+      background: var(--bg2);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 10;
+    }
 
-.user{
-background:#e31837;
-margin-left:auto;
-}
+    #hdr::after {
+      content: "";
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--red) 30%, var(--red) 70%, transparent);
+      opacity: 0.6;
+    }
 
-.bot{
-background:#2a2a40;
-}
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+    }
 
-.controls{
-position:fixed;
-bottom:0;
-width:100%;
-background:#111;
-padding:10px;
-}
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--red);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      box-shadow: 0 0 14px rgba(227,24,55,0.5);
+      flex-shrink: 0;
+    }
 
-input{
-width:70%;
-padding:10px;
-border-radius:6px;
-border:none;
-}
+    .logo-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1;
+    }
 
-button{
-padding:10px;
-margin-left:6px;
-border:none;
-border-radius:6px;
-background:#e31837;
-color:white;
-font-weight:bold;
-}
+    .logo-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      letter-spacing: 0.5px;
+      color: #fff;
+    }
 
-#micBtn{
-background:#444;
-}
+    .logo-sub {
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--red);
+      font-weight: 500;
+      margin-top: 1px;
+    }
 
-</style>
+    .hdr-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
+    /* GPS pill in header */
+    #locBar {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--bg3);
+      border: 1px solid var(--line2);
+      border-radius: 20px;
+      padding: 4px 10px 4px 7px;
+      transition: border-color 0.3s;
+      max-width: 54vw;
+      overflow: hidden;
+    }
+
+    #locBar.no-gps {
+      border-color: rgba(245,166,35,0.4);
+    }
+
+    .gps-dot {
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse-dot 2s infinite;
+    }
+
+    #locBar.no-gps .gps-dot {
+      background: var(--amber);
+      box-shadow: 0 0 6px var(--amber);
+      animation: none;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    #locAddr {
+      font-size: 10px;
+      color: var(--txt2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+    }
+
+    /* Status badge */
+    .status-badge {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      padding: 3px 7px;
+      border-radius: 4px;
+      background: rgba(37,211,102,0.12);
+      color: var(--green);
+      border: 1px solid rgba(37,211,102,0.25);
+      flex-shrink: 0;
+    }
+
+    /* ─── LANGUAGE BAR ─────────────────────────────────────── */
+    #langBar {
+      height: var(--lang-h);
+      background: var(--bg2);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-shrink: 0;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    #langBar::-webkit-scrollbar { display: none; }
+
+    /* JS renders buttons — style them here */
+    #langBar button {
+      flex-shrink: 0;
+      padding: 5px 11px;
+      border-radius: 6px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+      color: var(--txt2);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+
+    #langBar button:active { transform: scale(0.94); }
+
+    #langBar button.active,
+    #langBar button.sel {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+      box-shadow: 0 0 10px var(--red-glow);
+    }
+
+    /* ─── CHAT AREA ────────────────────────────────────────── */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 14px 12px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--line2) transparent;
+      -webkit-overflow-scrolling: touch;
+      background:
+        radial-gradient(ellipse 80% 40% at 50% 0%, rgba(227,24,55,0.04) 0%, transparent 70%),
+        var(--bg);
+    }
+
+    #chat::-webkit-scrollbar { width: 3px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+    /* Message rows */
+    .mr {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      animation: fadeUp 0.22s ease;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .mr.u { flex-direction: row-reverse; }
+
+    /* Avatar */
+    .av {
+      width: 30px; height: 30px;
+      background: linear-gradient(135deg, var(--bg3), #1e2535);
+      border: 1px solid rgba(227,24,55,0.3);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      flex-shrink: 0;
+      box-shadow: 0 0 10px rgba(227,24,55,0.12);
+    }
+
+    /* Bubbles */
+    .bb {
+      max-width: 78%;
+      padding: 9px 12px;
+      font-size: 13px;
+      line-height: 1.55;
+      border-radius: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .bb img {
+      display: block;
+      max-width: 100%;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+
+    .bb.a {
+      background: var(--bg3);
+      border: 1px solid var(--line);
+      border-bottom-left-radius: 4px;
+      color: var(--txt);
+    }
+
+    .bb.u {
+      background: linear-gradient(135deg, var(--red), #c01430);
+      border-bottom-right-radius: 4px;
+      color: #fff;
+    }
+
+    /* Processing spinner */
+    .proc {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--txt3);
+      font-size: 12px;
+      padding: 4px 6px;
+      font-style: italic;
+    }
+
+    .proc::before {
+      content: "";
+      width: 14px; height: 14px;
+      border: 2px solid var(--line2);
+      border-top-color: var(--red);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ─── STEPS BAR ────────────────────────────────────────── */
+    #sb {
+      background: var(--bg2);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      overflow-x: auto;
+      scrollbar-width: none;
+      flex-shrink: 0;
+      display: none;
+    }
+
+    #sb:not(:empty) { display: block; }
+    #sb::-webkit-scrollbar { display: none; }
+
+    /* JS will fill sbEl with step content */
+
+    /* ─── QUICK CHIPS ──────────────────────────────────────── */
+    #chips {
+      height: var(--chips-h);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 0 12px;
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-shrink: 0;
+      scrollbar-width: none;
+      border-top: 1px solid var(--line);
+      background: var(--bg2);
+    }
+
+    #chips::-webkit-scrollbar { display: none; }
+
+    .chip {
+      flex-shrink: 0;
+      padding: 6px 13px;
+      border-radius: 20px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+      color: var(--txt2);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.15s;
+      letter-spacing: 0.2px;
+    }
+
+    .chip:active {
+      background: rgba(227,24,55,0.15);
+      border-color: rgba(227,24,55,0.5);
+      color: #fff;
+      transform: scale(0.95);
+    }
+
+    /* ─── MIC BAR ──────────────────────────────────────────── */
+    #micBar {
+      height: 0;
+      overflow: hidden;
+      background: linear-gradient(90deg, rgba(227,24,55,0.08), rgba(227,24,55,0.04));
+      border-top: 1px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      transition: height 0.3s ease, border-color 0.3s;
+      flex-shrink: 0;
+    }
+
+    #micBar.on {
+      height: var(--mic-h);
+      border-color: rgba(227,24,55,0.25);
+    }
+
+    .mic-pulse {
+      display: flex;
+      gap: 3px;
+      align-items: flex-end;
+    }
+
+    .mic-pulse span {
+      width: 3px;
+      border-radius: 2px;
+      background: var(--red);
+    }
+
+    #micBar.on .mic-pulse span { animation: wave 1.0s ease-in-out infinite; }
+
+    .mic-pulse span:nth-child(1) { height: 6px;  animation-delay: 0.0s; }
+    .mic-pulse span:nth-child(2) { height: 12px; animation-delay: 0.1s; }
+    .mic-pulse span:nth-child(3) { height: 18px; animation-delay: 0.2s; }
+    .mic-pulse span:nth-child(4) { height: 12px; animation-delay: 0.1s; }
+    .mic-pulse span:nth-child(5) { height: 6px;  animation-delay: 0.0s; }
+
+    @keyframes wave {
+      0%, 100% { transform: scaleY(0.4); opacity: 0.5; }
+      50%       { transform: scaleY(1.0); opacity: 1.0; }
+    }
+
+    #micLabel {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: var(--red);
+    }
+
+    /* ─── INPUT BAR ────────────────────────────────────────── */
+    #inpArea {
+      background: var(--bg2);
+      border-top: 1px solid var(--line);
+      padding: 10px 12px;
+      padding-bottom: calc(10px + var(--safe-bot));
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Top row: text input + send */
+    .inp-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #inp {
+      flex: 1;
+      height: 40px;
+      background: var(--bg3);
+      border: 1px solid var(--line2);
+      border-radius: 10px;
+      padding: 0 14px;
+      color: var(--txt);
+      font-family: 'Exo 2', sans-serif;
+      font-size: 13px;
+      outline: none;
+      transition: border-color 0.2s;
+      caret-color: var(--red);
+    }
+
+    #inp::placeholder { color: var(--txt3); }
+    #inp:focus { border-color: rgba(227,24,55,0.45); }
+
+    #sendBtn {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      border: none;
+      background: var(--bg3);
+      color: var(--txt3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+      flex-shrink: 0;
+      font-size: 17px;
+    }
+
+    #sendBtn.on {
+      background: var(--red);
+      color: #fff;
+      box-shadow: 0 0 14px var(--red-glow);
+    }
+
+    #sendBtn:active { transform: scale(0.9); }
+
+    /* Bottom row: action buttons */
+    .btn-row {
+      display: flex;
+      gap: 7px;
+    }
+
+    /* Shared action button style */
+    .act-btn {
+      flex: 1;
+      height: 44px;
+      border-radius: 10px;
+      border: 1px solid var(--line2);
+      background: var(--bg3);
+      color: var(--txt2);
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      line-height: 1;
+      transition: all 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .act-btn span:first-child { font-size: 17px; line-height: 1; }
+
+    .act-btn:active { transform: scale(0.93); }
+
+    /* Voice button */
+    #voiceBtn {
+      flex: 1.4;
+      background: linear-gradient(135deg, var(--bg3), #1a1e2c);
+      border-color: rgba(227,24,55,0.3);
+    }
+
+    #voiceBtn.active {
+      background: linear-gradient(135deg, var(--red), var(--red-dim));
+      border-color: var(--red);
+      color: #fff;
+      box-shadow: 0 0 18px rgba(227,24,55,0.4);
+      animation: glow-pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes glow-pulse {
+      0%, 100% { box-shadow: 0 0 18px rgba(227,24,55,0.35); }
+      50%       { box-shadow: 0 0 28px rgba(227,24,55,0.60); }
+    }
+
+    /* Scan / photo buttons */
+    #scanBtn  { border-color: rgba(58,141,222,0.35); }
+    #photoBtn { border-color: rgba(58,141,222,0.35); }
+    #scanBtn:active, #photoBtn:active  { border-color: var(--blue); color: var(--blue); }
+
+    /* Nav / Stop buttons */
+    #navBtn {
+      border-color: rgba(37,211,102,0.35);
+      color: var(--green);
+    }
+
+    #stopBtn {
+      border-color: rgba(227,24,55,0.35);
+      color: var(--red);
+    }
+
+    /* Hidden file inputs */
+    #cameraIn, #photoIn { display: none; }
+
+    /* ─── DIVIDER LABEL ────────────────────────────────────── */
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0 2px;
+    }
+
+    .section-divider::before,
+    .section-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .section-divider span {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--txt3);
+    }
+
+    /* ─── CORNER BRACKETS (header accent) ─────────────────── */
+    .bracket-wrap {
+      position: relative;
+    }
+
+    /* ─── SCROLLBAR OVERALL ─────────────────────────────────── */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+    /* ─── RESPONSIVE FINE-TUNE ─────────────────────────────── */
+    @media (min-width: 420px) {
+      .bb { font-size: 14px; }
+      #inp { font-size: 14px; }
+    }
+  </style>
 </head>
 
 <body>
-
-<div class="header">
-🥷 Ninja Co-Pilot
-</div>
-
-<div class="chat" id="chat"></div>
-
-<div class="controls">
-
-<input id="textInput" placeholder="Type or speak..." />
-
-<button onclick="sendMsg()">Send</button>
-
-<button id="micBtn">🎤</button>
-
-</div>
-
-<script>
-
-const chat = document.getElementById("chat")
-const textInput = document.getElementById("textInput")
-
-function addMsg(text,cls){
-
-const d = document.createElement("div")
-
-d.className = "msg " + cls
-
-d.innerText = text
-
-chat.appendChild(d)
-
-chat.scrollTop = chat.scrollHeight
-
-}
-
-async function sendMsg(){
-
-let txt = textInput.value.trim()
-
-if(!txt)return
-
-addMsg(txt,"user")
-
-textInput.value=""
-
-try{
-
-const res = await fetch("/chat",{
-
-method:"POST",
-
-headers:{ "Content-Type":"application/json" },
-
-body:JSON.stringify({
-
-messages:[
-{role:"user",content:txt}
-]
-
-})
-
-})
-
-const data = await res.json()
-
-let reply = data.reply || "OK"
-
-addMsg(reply,"bot")
-
-if(data.dest_address){
-
-navigate(data.dest_address)
-
-}
-
-}catch(e){
-
-addMsg("Connection error","bot")
-
-}
-
-}
-
-function navigate(addr){
-
-const url =
-"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(addr)
-
-window.open(url,"_blank")
-
-}
-
-
-
-
-
-
-/* =========================
-VOICE RECOGNITION
-========================= */
-
-let recognition
-
-if ('webkitSpeechRecognition' in window){
-
-recognition = new webkitSpeechRecognition()
-
-recognition.continuous=false
-
-recognition.interimResults=false
-
-recognition.lang="en-SG"
-
-recognition.onresult=function(e){
-
-let txt=e.results[0][0].transcript
-
-textInput.value=txt
-
-sendMsg()
-
-}
-
-}
-
-
-
-
-document.getElementById("micBtn").onclick=function(){
-
-if(recognition){
-
-recognition.start()
-
-}else{
-
-alert("Voice not supported on this browser")
-
-}
-
-}
-
-
-
-
-/* =========================
-AUTO LANGUAGE DETECT
-========================= */
-
-textInput.addEventListener("input",function(){
-
-let v=this.value
-
-if(/[\u4e00-\u9fff]/.test(v)) recognition.lang="zh-CN"
-else if(/[ก-๙]/.test(v)) recognition.lang="th-TH"
-else if(/[ぁ-んァ-ン]/.test(v)) recognition.lang="ja-JP"
-else recognition.lang="en-SG"
-
-})
-
-</script>
-
+<div id="app">
+
+  <!-- ─── HEADER ─────────────────────────────────────── -->
+  <header id="hdr">
+    <div class="logo">
+      <div class="logo-icon">🥷</div>
+      <div class="logo-text">
+        <span class="logo-title">Ninja Co-Pilot</span>
+        <span class="logo-sub">AI Driver Assistant</span>
+      </div>
+    </div>
+
+    <div class="hdr-right">
+      <div id="locBar" class="no-gps">
+        <div class="gps-dot"></div>
+        <span id="locAddr">Locating…</span>
+      </div>
+      <div class="status-badge">LIVE</div>
+    </div>
+  </header>
+
+  <!-- ─── LANGUAGE SELECTOR ──────────────────────────── -->
+  <nav id="langBar" aria-label="Language selector"></nav>
+
+  <!-- ─── CHAT WINDOW ────────────────────────────────── -->
+  <main id="chat" role="log" aria-live="polite"></main>
+
+  <!-- ─── NAVIGATION STEPS BAR ──────────────────────── -->
+  <div id="sb" role="navigation" aria-label="Route steps"></div>
+
+  <!-- ─── QUICK CHIPS ────────────────────────────────── -->
+  <div id="chips" role="toolbar" aria-label="Quick actions"></div>
+
+  <!-- ─── MIC STATUS BAR ────────────────────────────── -->
+  <div id="micBar" role="status" aria-live="polite">
+    <div class="mic-pulse">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <span id="micLabel">HANDS-FREE ACTIVE</span>
+  </div>
+
+  <!-- ─── INPUT AREA ─────────────────────────────────── -->
+  <footer id="inpArea">
+    <!-- Text input row -->
+    <div class="inp-row">
+      <input
+        id="inp"
+        type="text"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+        placeholder="Ask Co-Pilot anything…"
+        enterkeyhint="send"
+        aria-label="Message input"
+      />
+      <button id="sendBtn" aria-label="Send">
+        ➤
+      </button>
+    </div>
+
+    <!-- Action buttons row -->
+    <div class="btn-row">
+      <button id="voiceBtn" class="act-btn" aria-label="Voice input">
+        <span>🎙️</span>
+        <span>TAP TO SPEAK</span>
+      </button>
+
+      <button id="scanBtn" class="act-btn" aria-label="Scan parcel label">
+        <span>📷</span>
+        <span>SCAN</span>
+      </button>
+
+      <button id="photoBtn" class="act-btn" aria-label="Upload photo">
+        <span>🖼️</span>
+        <span>PHOTO</span>
+      </button>
+
+      <button id="navBtn" class="act-btn" aria-label="Navigate to last address">
+        <span>🗺️</span>
+        <span>NAV</span>
+      </button>
+
+      <button id="stopBtn" class="act-btn" aria-label="Stop speaking">
+        <span>🔇</span>
+        <span>STOP</span>
+      </button>
+    </div>
+  </footer>
+
+</div><!-- #app -->
+
+<!-- Hidden file inputs -->
+<input id="cameraIn" type="file" accept="image/*" capture="environment" />
+<input id="photoIn"  type="file" accept="image/*" />
+
+<!-- Main script -->
+<script src="/static/ai-driver-copilot.js"></script>
 </body>
 </html>
