@@ -1,476 +1,246 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="theme-color" content="#0D0D1A" />
-  <title>Ninja Co-Pilot</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-    body{margin:0;background:#0D0D1A;font-family:'DM Sans',sans-serif;overflow:hidden}
-    input::placeholder{color:rgba(255,255,255,0.25)}
-    ::-webkit-scrollbar{width:3px}
-    ::-webkit-scrollbar-thumb{background:rgba(227,24,55,0.4);border-radius:2px}
 
-    #app{height:100vh;height:100dvh;display:flex;flex-direction:column;max-width:500px;margin:0 auto;background:#0D0D1A}
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    .hdr{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,255,255,0.06);flex-shrink:0}
-    .hdr-l{display:flex;align-items:center;gap:8px}
-    .hdr-logo{width:32px;height:32px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:16px}
-    .hdr-t{color:#fff;font-weight:700;font-size:13px}
-    .hdr-t span{color:#E31837}
-    .hdr-s{color:rgba(255,255,255,0.35);font-size:9px;letter-spacing:1px}
-    .top-actions{display:flex;gap:8px}
-    .mini-btn{min-width:40px;height:40px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:18px;cursor:pointer}
-    .mini-btn.on{background:rgba(76,175,80,0.18);border-color:rgba(76,175,80,0.5)}
+<title>Ninja Co-Pilot</title>
 
-    .loc-bar{padding:10px 14px;background:rgba(255,87,34,0.08);border-bottom:1px solid rgba(255,87,34,0.15);flex-shrink:0;display:flex;align-items:center;gap:8px}
-    .loc-dot{width:8px;height:8px;border-radius:50%;background:#FF5722;box-shadow:0 0 6px #FF5722;animation:pulse 2s infinite;flex-shrink:0}
-    .loc-label{color:rgba(255,255,255,0.4);font-size:9px;font-weight:600;letter-spacing:0.5px}
-    .loc-addr{color:#FF7A45;font-size:12px;font-weight:600}
-    .loc-bar.good{background:rgba(76,175,80,0.08);border-color:rgba(76,175,80,0.15)}
-    .loc-bar.good .loc-dot{background:#4CAF50;box-shadow:0 0 6px #4CAF50}
-    .loc-bar.good .loc-addr{color:#fff}
+<style>
 
-    .chips{display:flex;gap:5px;padding:6px 14px;overflow-x:auto;flex-shrink:0;scrollbar-width:none}
-    .chips::-webkit-scrollbar{display:none}
-    .chip{padding:4px 10px;border-radius:14px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:rgba(255,255,255,0.6);font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap;font-family:'DM Sans',sans-serif}
+body{
+background:#0d0d1a;
+color:white;
+font-family:Arial;
+margin:0;
+}
 
-    .chat{flex:1;overflow-y:auto;padding:10px 10px 6px}
-    .mr{display:flex;margin-bottom:8px}
-    .mr.u{justify-content:flex-end}
-    .mr.a{justify-content:flex-start}
-    .av{width:26px;height:26px;border-radius:8px;background:#E31837;display:flex;align-items:center;justify-content:center;font-size:13px;margin-right:6px;flex-shrink:0;margin-top:2px}
-    .bb{max-width:82%;padding:10px 13px;color:#fff;font-size:13.5px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
-    .bb.u{background:#E31837;border-radius:14px 14px 4px 14px}
-    .bb.a{background:rgba(255,255,255,0.07);border-radius:14px 14px 14px 4px}
+.header{
+padding:14px;
+background:#111;
+font-weight:bold;
+font-size:18px;
+}
 
-    .map-card{margin:8px 0;background:rgba(255,255,255,0.05);border:1px solid rgba(76,175,80,0.2);border-radius:14px;padding:12px}
-    .map-title{font-size:12px;color:#4CAF50;font-weight:700;margin-bottom:8px}
-    .map-actions{display:flex;gap:8px;margin-top:10px}
-    .map-actions button{flex:1;padding:10px;border:none;border-radius:10px;font-size:12px;font-weight:700;cursor:pointer}
-    .gm{background:#4285F4;color:#fff}
-    .ap{background:#111;color:#fff;border:1px solid rgba(255,255,255,0.12)}
+.chat{
+height:60vh;
+overflow:auto;
+padding:10px;
+}
 
-    .proc{color:rgba(255,255,255,0.3);font-size:12px;padding:6px 40px}
+.msg{
+margin:8px 0;
+padding:10px;
+border-radius:10px;
+max-width:80%;
+}
 
-    .sb{padding:5px 14px;display:none;align-items:center;justify-content:space-between;background:rgba(227,24,55,0.08);border-top:1px solid rgba(227,24,55,0.15)}
-    .sb span{color:#E31837;font-size:11px;font-weight:600}
-    .sb button{padding:3px 10px;border-radius:10px;border:1px solid #E31837;background:transparent;color:#E31837;font-size:11px;font-weight:600;cursor:pointer}
+.user{
+background:#e31837;
+margin-left:auto;
+}
 
-    .ib{padding:10px 14px;border-top:1px solid rgba(255,255,255,0.06);background:rgba(0,0,0,0.3);flex-shrink:0}
-    .ir{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-    .ir input{flex:1;padding:10px 12px;border-radius:10px;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);color:#fff;font-size:13px;outline:none;font-family:'DM Sans',sans-serif}
-    .snd{width:42px;height:42px;border-radius:50%;border:none;background:rgba(255,255,255,0.06);color:#fff;font-size:14px;cursor:pointer;flex-shrink:0}
-    .snd.on{background:#E31837}
+.bot{
+background:#2a2a40;
+}
 
-    .ar{display:flex;gap:6px}
-    .ar button{flex:1;padding:12px;border-radius:10px;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;align-items:center;gap:2px}
-    .ar button span:first-child{font-size:18px}
-    .ar button span:last-child{font-size:9px;font-weight:600}
-    .vb{background:#E31837;color:#fff;flex:2!important;flex-direction:row!important;gap:8px!important;justify-content:center}
-    .vb span:last-child{font-size:13px!important;font-weight:700!important}
-    .vb.listening{background:#c00;animation:micPulse 0.8s infinite alternate}
-    .scb{background:rgba(255,255,255,0.06);color:#fff}
-    .plb{background:rgba(255,255,255,0.06);color:#fff}
-    .nvb{background:rgba(76,175,80,0.16);color:#4CAF50}
-    .lvb{background:rgba(33,150,243,0.15);color:#2196F3}
-    .lvb.on{background:rgba(33,150,243,0.4);color:#fff}
+.controls{
+position:fixed;
+bottom:0;
+width:100%;
+background:#111;
+padding:10px;
+}
 
-    /* LIVE CAM OVERLAY */
-    #camOverlay{
-      display:none;position:fixed;inset:0;z-index:100;background:#000;
-      flex-direction:column
-    }
-    #camOverlay.active{display:flex}
-    #camVideo{width:100%;flex:1;object-fit:cover;background:#000}
-    .cam-bar{
-      padding:12px 14px;background:rgba(0,0,0,0.85);display:flex;gap:8px;align-items:center;
-      border-top:1px solid rgba(255,255,255,0.08)
-    }
-    .cam-bar button{
-      flex:1;padding:12px;border-radius:10px;border:none;font-size:13px;font-weight:700;
-      font-family:'DM Sans',sans-serif;cursor:pointer
-    }
-    .cam-snap{background:#E31837;color:#fff}
-    .cam-close{background:rgba(255,255,255,0.1);color:#fff}
-    #camStatus{
-      padding:8px 14px;background:rgba(0,0,0,0.7);color:rgba(255,255,255,0.6);
-      font-size:11px;text-align:center;min-height:30px
-    }
+input{
+width:70%;
+padding:10px;
+border-radius:6px;
+border:none;
+}
 
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
-    @keyframes micPulse{from{box-shadow:0 0 0 0 rgba(227,24,55,0.5)}to{box-shadow:0 0 0 10px rgba(227,24,55,0)}}
-  </style>
+button{
+padding:10px;
+margin-left:6px;
+border:none;
+border-radius:6px;
+background:#e31837;
+color:white;
+font-weight:bold;
+}
+
+#micBtn{
+background:#444;
+}
+
+</style>
+
 </head>
+
 <body>
-<div id="app">
-  <div class="hdr">
-    <div class="hdr-l">
-      <div class="hdr-logo">🥷</div>
-      <div>
-        <div class="hdr-t"><span>NINJA</span> CO-PILOT</div>
-        <div class="hdr-s">AI SENIOR DRIVER ASSISTANT</div>
-      </div>
-    </div>
-    <div class="top-actions">
-      <button class="mini-btn" id="gpsBtn" title="Retry GPS">📍</button>
-    </div>
-  </div>
 
-  <div class="loc-bar" id="locBar">
-    <div class="loc-dot"></div>
-    <div>
-      <div class="loc-label">YOUR LOCATION</div>
-      <div class="loc-addr" id="locAddr">Locating...</div>
-    </div>
-  </div>
-
-  <div class="chips" id="chips"></div>
-  <div class="chat" id="chat"></div>
-
-  <div class="sb" id="sb">
-    <span>🔊 Speaking...</span>
-    <button id="stopBtn">Stop</button>
-  </div>
-
-  <div class="ib">
-    <div class="ir">
-      <input type="text" id="inp" placeholder="Type or speak in any language...">
-      <button class="snd" id="sendBtn">▶</button>
-    </div>
-    <div class="ar">
-      <button class="vb" id="voiceBtn"><span>🎙️</span><span>TAP TO SPEAK</span></button>
-      <button class="scb" id="scanBtn"><span>📷</span><span>SCAN</span></button>
-      <button class="plb" id="photoBtn"><span>🖼️</span><span>PHOTO</span></button>
-      <button class="nvb" id="mapBtn"><span>🗺️</span><span>MAP</span></button>
-      <button class="lvb" id="liveBtn"><span>📡</span><span>LIVE</span></button>
-    </div>
-  </div>
+<div class="header">
+🥷 Ninja Co-Pilot
 </div>
 
-<!-- LIVE CAMERA OVERLAY -->
-<div id="camOverlay">
-  <video id="camVideo" autoplay playsinline muted></video>
-  <div id="camStatus">Point camera at parcel label or street sign</div>
-  <div class="cam-bar">
-    <button class="cam-snap" id="camSnap">📸 Analyze</button>
-    <button class="cam-close" id="camClose">✕ Close</button>
-  </div>
-</div>
+<div class="chat" id="chat"></div>
 
-<!-- Hidden file inputs -->
-<input type="file" id="scanInput" accept="image/*" capture="environment" style="display:none">
-<input type="file" id="photoInput" accept="image/*" style="display:none">
+<div class="controls">
+
+<input id="textInput" placeholder="Type or speak..." />
+
+<button onclick="sendMsg()">Send</button>
+
+<button id="micBtn">🎤</button>
+
+</div>
 
 <script>
-(function () {
-  "use strict";
 
-  // ── DOM refs ──────────────────────────────────────────────
-  const chatEl   = document.getElementById("chat");
-  const inp      = document.getElementById("inp");
-  const sendBtn  = document.getElementById("sendBtn");
-  const voiceBtn = document.getElementById("voiceBtn");
-  const mapBtn   = document.getElementById("mapBtn");
-  const liveBtn  = document.getElementById("liveBtn");
-  const stopBtn  = document.getElementById("stopBtn");
-  const gpsBtn   = document.getElementById("gpsBtn");
-  const locBar   = document.getElementById("locBar");
-  const locAddr  = document.getElementById("locAddr");
-  const sb       = document.getElementById("sb");
-  const chipsEl  = document.getElementById("chips");
-  const scanBtn  = document.getElementById("scanBtn");
-  const photoBtn = document.getElementById("photoBtn");
-  const scanInput  = document.getElementById("scanInput");
-  const photoInput = document.getElementById("photoInput");
-  const camOverlay = document.getElementById("camOverlay");
-  const camVideo   = document.getElementById("camVideo");
-  const camSnap    = document.getElementById("camSnap");
-  const camClose   = document.getElementById("camClose");
-  const camStatus  = document.getElementById("camStatus");
+const chat = document.getElementById("chat")
+const textInput = document.getElementById("textInput")
 
-  // ── State ─────────────────────────────────────────────────
-  let gpsPos = null, currentAddress = "", gpsWatchId = null;
-  let recognition = null, lastDestAddress = "";
-  let speechReady = false, camStream = null, camActive = false;
-  let micListening = false;
+function addMsg(text,cls){
 
-  // ── TTS FIX: pre-unlock on first touch ───────────────────
-  // Mobile blocks speechSynthesis unless triggered inside a user gesture.
-  // We prime it silently on the very first touch, so later async calls work.
-  function primeSpeech() {
-    if (speechReady || !window.speechSynthesis) return;
-    try {
-      const u = new SpeechSynthesisUtterance(" ");
-      u.volume = 0;
-      u.onend = () => { speechReady = true; };
-      window.speechSynthesis.speak(u);
-      setTimeout(() => { window.speechSynthesis.cancel(); speechReady = true; }, 200);
-    } catch(_) { speechReady = true; }
-  }
+const d = document.createElement("div")
 
-  // Prime on first ANY touch anywhere on the page
-  document.addEventListener("touchstart", primeSpeech, { once: true, passive: true });
-  document.addEventListener("click", primeSpeech, { once: true });
+d.className = "msg " + cls
 
-  // ── speak() ──────────────────────────────────────────────
-  // TTS FIX: if speechSynthesis is suspended (iOS bug), resume it first.
-  function speak(text, onDone) {
-    if (!window.speechSynthesis || !text) { if (onDone) onDone(); return; }
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}]/gu, "").trim());
-      u.rate = 0.95; u.pitch = 1; u.volume = 1; u.lang = "en-SG";
-      u.onstart = () => sb.style.display = "flex";
-      u.onend = u.onerror = () => { sb.style.display = "none"; if (onDone) onDone(); };
-      // iOS fix: resume if paused
-      if (window.speechSynthesis.paused) window.speechSynthesis.resume();
-      window.speechSynthesis.speak(u);
-      // Keepalive tick — iOS kills TTS after ~15s silence
-      const tick = setInterval(() => {
-        if (!window.speechSynthesis.speaking) { clearInterval(tick); return; }
-        window.speechSynthesis.pause();
-        window.speechSynthesis.resume();
-      }, 10000);
-      u.onend = u.onerror = () => { sb.style.display = "none"; clearInterval(tick); if (onDone) onDone(); };
-    } catch(e) { sb.style.display = "none"; if (onDone) onDone(); }
-  }
+d.innerText = text
 
-  stopBtn.onclick = () => { window.speechSynthesis && window.speechSynthesis.cancel(); sb.style.display = "none"; };
+chat.appendChild(d)
 
-  // ── Chips ─────────────────────────────────────────────────
-  ["Where am I?","Go to IMM","Navigate to Jurong Point","Nearest petrol station","Nearest toilet","Cannot find address"]
-    .forEach(text => {
-      const b = document.createElement("button");
-      b.className = "chip"; b.textContent = text;
-      b.onclick = () => { primeSpeech(); sendText(text); };
-      chipsEl.appendChild(b);
-    });
+chat.scrollTop = chat.scrollHeight
 
-  // ── Helpers ───────────────────────────────────────────────
-  function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-  function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
+}
 
-  function addBubble(role, text) {
-    const row = document.createElement("div");
-    row.className = "mr " + (role === "user" ? "u" : "a");
-    row.innerHTML = (role === "assistant" ? '<div class="av">🥷</div>' : "") +
-      '<div class="bb ' + (role === "user" ? "u" : "a") + '">' + esc(text) + "</div>";
-    chatEl.appendChild(row); scrollDown();
-  }
+async function sendMsg(){
 
-  function showProc() { hideProc(); const e = document.createElement("div"); e.className="proc"; e.id="proc"; e.textContent="Processing..."; chatEl.appendChild(e); scrollDown(); }
-  function hideProc() { const e = document.getElementById("proc"); if(e) e.remove(); }
+let txt = textInput.value.trim()
 
-  function setLoc(good, text) {
-    locAddr.textContent = text;
-    locBar.classList.toggle("good", good);
-  }
+if(!txt)return
 
-  // ── GPS ───────────────────────────────────────────────────
-  async function reverseGeocode(lat, lng) {
-    try {
-      const r = await fetch(`/api/geocode?lat=${lat}&lng=${lng}`);
-      const d = await r.json();
-      currentAddress = d.address || `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-      setLoc(true, currentAddress);
-    } catch(_) { setLoc(false, `${lat.toFixed(5)}, ${lng.toFixed(5)}`); }
-  }
+addMsg(txt,"user")
 
-  function gpsError(err) {
-    gpsBtn.classList.remove("on");
-    const msgs = { 1: "Location blocked. Allow GPS in browser settings.", 2: "Location unavailable. Try open sky.", 3: "GPS timeout. Tap 📍 to retry." };
-    const msg = !window.isSecureContext ? "HTTPS required for GPS." : (err ? (msgs[err.code] || "Unable to detect location.") : "Unable to detect location.");
-    setLoc(false, msg);
-  }
+textInput.value=""
 
-  function startGPS() {
-    if (!("geolocation" in navigator)) { setLoc(false, "GPS not supported."); return; }
-    if (!window.isSecureContext) { setLoc(false, "HTTPS required for GPS."); return; }
-    if (gpsWatchId) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+try{
 
-    navigator.geolocation.getCurrentPosition(
-      async p => { gpsPos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy}; gpsBtn.classList.add("on"); await reverseGeocode(gpsPos.lat, gpsPos.lng); },
-      gpsError, { enableHighAccuracy:true, timeout:15000, maximumAge:0 }
-    );
-    gpsWatchId = navigator.geolocation.watchPosition(
-      async p => { gpsPos = {lat:p.coords.latitude, lng:p.coords.longitude, acc:p.coords.accuracy}; gpsBtn.classList.add("on"); await reverseGeocode(gpsPos.lat, gpsPos.lng); },
-      gpsError, { enableHighAccuracy:true, timeout:20000, maximumAge:3000 }
-    );
-  }
+const res = await fetch("/chat",{
 
-  // ── Map card ──────────────────────────────────────────────
-  function showMapCard(dest) {
-    if (!dest) return;
-    const src = gpsPos
-      ? `https://www.google.com/maps?saddr=${gpsPos.lat},${gpsPos.lng}&daddr=${encodeURIComponent(dest)}&output=embed`
-      : `https://www.google.com/maps?q=${encodeURIComponent(dest)}&z=15&output=embed`;
-    const wrap = document.createElement("div");
-    wrap.className = "mr a";
-    wrap.innerHTML = `<div class="av">🥷</div><div class="bb a" style="padding:0;background:transparent;max-width:88%"><div class="map-card"><div class="map-title">Route to: ${esc(dest)}</div><div style="border-radius:10px;overflow:hidden;border:1px solid rgba(255,255,255,0.08)"><iframe src="${src}" width="100%" height="180" style="border:0;display:block" loading="lazy"></iframe></div><div class="map-actions"><button class="gm" id="gmBtnX">Open Google Maps</button><button class="ap" id="apBtnX">Apple Maps</button></div></div></div>`;
-    chatEl.appendChild(wrap); scrollDown();
-    document.getElementById("gmBtnX").onclick = () => window.open(gpsPos ? `https://www.google.com/maps/dir/${gpsPos.lat},${gpsPos.lng}/${encodeURIComponent(dest)}` : `https://www.google.com/maps/search/${encodeURIComponent(dest)}`, "_blank");
-    document.getElementById("apBtnX").onclick = () => window.open(`http://maps.apple.com/?daddr=${encodeURIComponent(dest)}`, "_blank");
-    document.getElementById("gmBtnX").id = document.getElementById("apBtnX").id = "";
-  }
+method:"POST",
 
-  // ── sendText ──────────────────────────────────────────────
-  async function sendText(textArg) {
-    const text = (textArg || inp.value || "").trim();
-    if (!text) return;
-    primeSpeech();  // ensure speech is unlocked BEFORE the fetch
-    addBubble("user", text);
-    inp.value = ""; sendBtn.classList.remove("on");
-    showProc();
-    try {
-      const res = await fetch("/api/chat", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ text, lat: gpsPos?.lat || null, lng: gpsPos?.lng || null, address: currentAddress })
-      });
-      const data = await res.json();
-      hideProc();
-      const reply = data.reply || "No response.";
-      addBubble("assistant", reply);
-      speak(reply);  // now works because speech was primed on button tap
-      if (data.dest_address) { lastDestAddress = data.dest_address; showMapCard(lastDestAddress); }
-      if (data.show_my_location && currentAddress) addBubble("assistant", "📍 " + currentAddress);
-    } catch(e) { hideProc(); addBubble("assistant", "Cannot reach server."); }
-  }
+headers:{ "Content-Type":"application/json" },
 
-  // ── Voice ─────────────────────────────────────────────────
-  function startVoice() {
-    primeSpeech();
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { addBubble("assistant", "Voice not supported. Please type."); return; }
-    if (micListening) { if (recognition) try { recognition.stop(); } catch(_) {} micListening = false; voiceBtn.classList.remove("listening"); voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK"; return; }
+body:JSON.stringify({
 
-    if (recognition) try { recognition.stop(); } catch(_) {}
-    recognition = new SR();
-    recognition.lang = "en-SG";
-    recognition.continuous = false;
-    recognition.interimResults = false;
+messages:[
+{role:"user",content:txt}
+]
 
-    recognition.onstart = () => { micListening = true; voiceBtn.classList.add("listening"); voiceBtn.querySelector("span:last-child").textContent = "LISTENING..."; };
-    recognition.onresult = e => { const text = e.results[0][0].transcript; micListening = false; voiceBtn.classList.remove("listening"); voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK"; sendText(text); };
-    recognition.onerror = () => { micListening = false; voiceBtn.classList.remove("listening"); voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK"; addBubble("assistant", "Mic unavailable. Allow microphone."); };
-    recognition.onend = () => { micListening = false; voiceBtn.classList.remove("listening"); voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK"; };
+})
 
-    try { recognition.start(); } catch(e) { voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK"; }
-  }
+})
 
-  // ── Scan / Photo ──────────────────────────────────────────
-  async function handleImageFile(file) {
-    if (!file) return;
-    addBubble("user", "📷 Image sent for scanning...");
-    showProc();
-    const reader = new FileReader();
-    reader.onload = async e => {
-      const base64 = e.target.result.split(",")[1];
-      try {
-        const res = await fetch("/api/scan", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({ image_base64: base64, ocr_prompt: "Extract Singapore delivery address. Return JSON: {address,unit,postal,recipient,phone,confidence}" })
-        });
-        const data = await res.json();
-        hideProc();
-        let reply = data.reply || "";
-        let parsed = null;
-        try { parsed = JSON.parse(reply.replace(/```json|```/g,"")); } catch(_) {}
-        if (parsed && parsed.address) {
-          addBubble("assistant", "📦 " + (parsed.unit ? "Unit "+parsed.unit+"\n" : "") + parsed.address + (parsed.postal ? " "+parsed.postal : ""));
-          const voice = (parsed.unit ? "Unit "+parsed.unit+". " : "") + parsed.address;
-          speak(voice, () => { lastDestAddress = parsed.address + (parsed.postal?" "+parsed.postal:""); showMapCard(lastDestAddress); });
-        } else {
-          addBubble("assistant", reply || "No address found.");
-          speak(reply || "No address found.");
-        }
-      } catch(e) { hideProc(); addBubble("assistant", "Scan failed."); }
-    };
-    reader.readAsDataURL(file);
-  }
+const data = await res.json()
 
-  scanBtn.onclick = () => { primeSpeech(); scanInput.click(); };
-  photoBtn.onclick = () => { primeSpeech(); photoInput.click(); };
-  scanInput.onchange = () => { if (scanInput.files[0]) { handleImageFile(scanInput.files[0]); scanInput.value = ""; } };
-  photoInput.onchange = () => { if (photoInput.files[0]) { handleImageFile(photoInput.files[0]); photoInput.value = ""; } };
+let reply = data.reply || "OK"
 
-  // ── LIVE CAM ──────────────────────────────────────────────
-  // FIX: LIVE button opens real device camera stream (not just toggle text)
-  function openLiveCam() {
-    primeSpeech();
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } })
-      .then(stream => {
-        camStream = stream;
-        camVideo.srcObject = stream;
-        camOverlay.classList.add("active");
-        camActive = true;
-        liveBtn.classList.add("on");
-        camStatus.textContent = "Point camera at label or sign, then tap Analyze";
-      })
-      .catch(err => { addBubble("assistant", "Camera access denied: " + err.message); });
-  }
+addMsg(reply,"bot")
 
-  function closeLiveCam() {
-    camActive = false;
-    if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
-    camVideo.srcObject = null;
-    camOverlay.classList.remove("active");
-    liveBtn.classList.remove("on");
-  }
+if(data.dest_address){
 
-  async function analyzeFrame() {
-    if (!camActive || !camVideo.videoWidth) { camStatus.textContent = "Camera not ready"; return; }
-    camStatus.textContent = "🔍 Analyzing...";
-    const canvas = document.createElement("canvas");
-    canvas.width = camVideo.videoWidth; canvas.height = camVideo.videoHeight;
-    canvas.getContext("2d").drawImage(camVideo, 0, 0);
-    let b64 = canvas.toDataURL("image/jpeg", 0.8).split(",")[1];
-    try {
-      const res = await fetch("/api/scan", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ image_base64: b64, ocr_prompt: "Analyze this Singapore street or parcel image. Reply:\nADDRESS: full address or UNKNOWN\nNOTE: short action" })
-      });
-      const data = await res.json();
-      const reply = data.reply || "";
-      camStatus.textContent = reply.slice(0,120) || "No result";
-      const m = reply.match(/ADDRESS:\s*(.+)/i);
-      if (m && m[1] && m[1].trim().toUpperCase() !== "UNKNOWN") {
-        const addr = m[1].trim();
-        closeLiveCam();
-        addBubble("assistant", "📹 Camera found: " + addr);
-        speak("Address found: " + addr);
-        lastDestAddress = addr;
-        showMapCard(addr);
-      }
-    } catch(e) { camStatus.textContent = "Analysis failed."; }
-  }
+navigate(data.dest_address)
 
-  liveBtn.onclick = () => { if (camActive) closeLiveCam(); else openLiveCam(); };
-  camSnap.onclick = analyzeFrame;
-  camClose.onclick = closeLiveCam;
+}
 
-  // ── Map btn ───────────────────────────────────────────────
-  mapBtn.onclick = () => {
-    primeSpeech();
-    if (lastDestAddress) { showMapCard(lastDestAddress); return; }
-    if (gpsPos) { window.open(`https://www.google.com/maps?q=${gpsPos.lat},${gpsPos.lng}`, "_blank"); }
-    else addBubble("assistant", "GPS not ready. Tap 📍 to retry.");
-  };
+}catch(e){
 
-  // ── Input ─────────────────────────────────────────────────
-  sendBtn.onclick = () => { primeSpeech(); sendText(); };
-  inp.addEventListener("input", () => sendBtn.classList.toggle("on", !!inp.value.trim()));
-  inp.addEventListener("keydown", e => { if (e.key === "Enter") { primeSpeech(); sendText(); } });
-  voiceBtn.onclick = startVoice;
-  gpsBtn.onclick = () => { addBubble("assistant", "Retrying GPS..."); startGPS(); };
+addMsg("Connection error","bot")
 
-  // ── Init ──────────────────────────────────────────────────
-  addBubble("assistant", "Ready. GPS locating now.\n\n• Tap SCAN 📷 to scan parcel label\n• Tap LIVE 📡 to open live camera\n• Tap 🎙️ to speak\n• Tap 🗺️ MAP to open map");
-  startGPS();
-})();
+}
+
+}
+
+function navigate(addr){
+
+const url =
+"https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(addr)
+
+window.open(url,"_blank")
+
+}
+
+
+
+
+
+
+/* =========================
+VOICE RECOGNITION
+========================= */
+
+let recognition
+
+if ('webkitSpeechRecognition' in window){
+
+recognition = new webkitSpeechRecognition()
+
+recognition.continuous=false
+
+recognition.interimResults=false
+
+recognition.lang="en-SG"
+
+recognition.onresult=function(e){
+
+let txt=e.results[0][0].transcript
+
+textInput.value=txt
+
+sendMsg()
+
+}
+
+}
+
+
+
+
+document.getElementById("micBtn").onclick=function(){
+
+if(recognition){
+
+recognition.start()
+
+}else{
+
+alert("Voice not supported on this browser")
+
+}
+
+}
+
+
+
+
+/* =========================
+AUTO LANGUAGE DETECT
+========================= */
+
+textInput.addEventListener("input",function(){
+
+let v=this.value
+
+if(/[\u4e00-\u9fff]/.test(v)) recognition.lang="zh-CN"
+else if(/[ก-๙]/.test(v)) recognition.lang="th-TH"
+else if(/[ぁ-んァ-ン]/.test(v)) recognition.lang="ja-JP"
+else recognition.lang="en-SG"
+
+})
+
 </script>
+
 </body>
 </html>
