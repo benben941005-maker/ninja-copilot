@@ -1,26 +1,32 @@
+// ═══════════════════════════════════════════════════════════
+// NINJA CO-PILOT — CTO DEMO UPGRADE
+// Features:
+// - Always-on hands-free mic after first tap
+// - Turn-by-turn voice navigation
+// - Nearest place search (hotel / toilet / MRT / petrol / restaurant / mall)
+// - Parcel OCR scan -> auto route
+// - ETA 5-minute notify popup (SMS / WhatsApp)
+// - Rain delay popup (SMS / WhatsApp)
+// - Multi-language voice + UI text
+// - Uses backend endpoints: /api/geocode /api/address-to-latlng /api/place-search
+//   /api/route /api/weather /api/chat /api/scan /api/transcribe
+// ═══════════════════════════════════════════════════════════
+
 (function () {
     "use strict";
 
-    // Show JS errors visibly in chat for debugging
-    window.onerror = function(msg, src, line) {
-        var el = document.getElementById("chat");
-        if (el) {
-            var d = document.createElement("div");
-            d.style.cssText = "color:#ff4444;font-size:11px;padding:8px;background:rgba(255,0,0,0.1);border-radius:8px;margin:6px";
-            d.textContent = "JS Error: " + msg + " (line " + line + ")";
-            el.appendChild(d);
-        }
-    };
-
-    var MAX_DIM = 1600, MAX_BYTES = 5 * 1024 * 1024;
+    var MAX_DIM = 800;
+    var MAX_BYTES = 4 * 1024 * 1024;
     var ETA_NOTIFY_SECONDS = 300;
     var ETA_NOTIFY_METERS = 1200;
-    var DEFAULT_CUSTOMER_PHONE = "";
     var WEATHER_REFRESH_MS = 5 * 60 * 1000;
+    var RECORDER_SEGMENT_MS = 2600;
+    var GPS_CHECK_INTERVAL_MS = 1500;
+    var DEFAULT_CUSTOMER_PHONE = "88918958";
+    var AUTO_HANDS_FREE = true;
 
-    var ua = navigator.userAgent.toLowerCase();
-    var isIOS = /iphone|ipad|ipod/.test(ua);
-    var hasSR = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+    var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    var hasSR = !!SpeechRecognitionCtor;
     var useRecorder = !hasSR;
 
     var LANGUAGES = [
@@ -29,42 +35,57 @@
         { label: "繁體", flag: "🇹🇼", code: "zh-TW", ai: "Chinese Traditional" },
         { label: "廣東話", flag: "🇭🇰", code: "zh-HK", ai: "Cantonese" },
         { label: "Malay", flag: "🇲🇾", code: "ms-MY", ai: "Malay" },
-        { label: "Tamil", flag: "🇮🇳", code: "ta-IN", ai: "Tamil" }
+        { label: "Tamil", flag: "🇮🇳", code: "ta-IN", ai: "Tamil" },
+        { label: "ไทย", flag: "🇹🇭", code: "th-TH", ai: "Thai" },
+        { label: "Việt", flag: "🇻🇳", code: "vi-VN", ai: "Vietnamese" },
+        { label: "Indo", flag: "🇮🇩", code: "id-ID", ai: "Bahasa Indonesia" },
+        { label: "한국어", flag: "🇰🇷", code: "ko-KR", ai: "Korean" },
+        { label: "日本語", flag: "🇯🇵", code: "ja-JP", ai: "Japanese" }
     ];
 
-    var LANG_TTS = {
-        "zh-CN": ["zh-CN", "cmn-CN", "zh"],
-        "zh-TW": ["zh-TW", "cmn-TW", "zh-Hant", "zh"],
-        "zh-HK": ["zh-HK", "yue-HK", "yue", "zh-Hant-HK"],
-        "ms": ["ms-MY", "ms"],
-        "ta": ["ta-IN", "ta"],
-        "en": ["en-SG", "en-US", "en-GB", "en"]
+    var CHIPS = [
+        "Nearest hotel",
+        "Nearest toilet",
+        "Nearest MRT",
+        "Nearest petrol station",
+        "Nearest restaurant",
+        "Cannot find address",
+        "No answer",
+        "Traffic jam",
+        "Damaged parcel",
+        "Set customer phone 88918958"
+    ];
+
+    var state = {
+        gpsPos: null,
+        currentStreet: "",
+        selectedLang: 0,
+
+        micActive: false,
+        isListening: false,
+        isSpeaking: false,
+        speechUnlocked: false,
+        recognition: null,
+        mediaRecorder: null,
+        audioChunks: [],
+        recordTimer: null,
+        ttsTimer: null,
+
+        busy: false,
+        customerPhone: DEFAULT_CUSTOMER_PHONE,
+        scannedAddr: null,
+
+        navActive: false,
+        activeRoute: null,
+        activeStepIndex: 0,
+        lastSpokenStep: -1,
+        lastGpsCheckAt: 0,
+        notifyShownForRoute: false,
+        arrivalPromptSpoken: false,
+        rainAlertShownForRoute: false,
+        currentWeatherInfo: null,
+        weatherTimer: null
     };
-
-    var busy = false, scannedAddr = null, isSpeaking = false, micActive = false;
-    var isListening = false, recognition = null, gpsPos = null, selectedLang = 0;
-    var currentStreet = "";
-    var mediaRecorder = null, audioChunks = [];
-    var recordTimer = null, ttsTimer = null;
-    var speechUnlocked = false;
-
-    var activeRoute = null, activeStepIndex = 0, lastSpokenStep = -1, navActive = false;
-    var lastGpsCheckAt = 0;
-    var customerPhone = DEFAULT_CUSTOMER_PHONE;
-    var notifyShownForRoute = false, arrivalPromptSpoken = false;
-    var rainAlertShownForRoute = false, currentWeatherInfo = null;
-    var lastDetectedLang = "en-SG";
-    var arrivalAutoSent = false;
-    var rainAutoSent = false;
-
-    var transportMode = "unknown";
-    var lastWeatherRefresh = 0;
-    var routingMode = "driving";
-
-    var leafletMap = null, mapMarker = null, routeLayer = null, destMarker = null;
-    var mapVisible = false;
-
-    var camActive = false, camStream = null, camAutoInterval = null, camAutoOn = false;
 
     var chatEl = document.getElementById("chat");
     var inp = document.getElementById("inp");
@@ -72,6 +93,8 @@
     var voiceBtn = document.getElementById("voiceBtn");
     var scanBtn = document.getElementById("scanBtn");
     var photoBtn = document.getElementById("photoBtn");
+    var navBtnEl = document.getElementById("navBtn");
+    var stopBtnEl = document.getElementById("stopBtn");
     var sbEl = document.getElementById("sb");
     var micBar = document.getElementById("micBar");
     var micLabel = document.getElementById("micLabel");
@@ -81,1088 +104,160 @@
     var chipsEl = document.getElementById("chips");
     var cameraIn = document.getElementById("cameraIn");
     var photoIn = document.getElementById("photoIn");
-    var mapBtn = document.getElementById("mapBtn");
-    var mapPanel = document.getElementById("mapPanel");
-    var mapZoomIn = document.getElementById("mapZoomIn");
-    var mapZoomOut = document.getElementById("mapZoomOut");
-    var mapCenter = document.getElementById("mapCenter");
-    var mapClose = document.getElementById("mapClose");
-    var mpDriving = document.getElementById("mpDriving");
-    var mpWalking = document.getElementById("mpWalking");
-    var liveCamBtn = document.getElementById("liveCamBtn");
-    var camOverlay = document.getElementById("camOverlay");
-    var camVideo = document.getElementById("camVideo");
-    var camSnap = document.getElementById("camSnap");
-    var camCloseBtn = document.getElementById("camCloseBtn");
-    var camAutoToggle = document.getElementById("camAutoToggle");
-    var camStatus = document.getElementById("camStatus");
-    var camAiReply = document.getElementById("camAiReply");
-    var modeBadge = document.getElementById("modeBadge");
-    var wxBadge = document.getElementById("wxBadge");
-    var wxIcon = document.getElementById("wxIcon");
-    var wxTemp = document.getElementById("wxTemp");
-    var wxDesc = document.getElementById("wxDesc");
-    var stopBtnEl = document.getElementById("stopBtn");
 
-    function currentLang() { return LANGUAGES[selectedLang]; }
-    function syncReplyLanguageToSelection() { lastDetectedLang = currentLang().code; }
-    function isCantoneseMode() { return currentLang().code === "zh-HK"; }
-
-    function getPreferredReplyLanguage() {
-        var code = currentLang().code;
-        if (code === "zh-HK") return "Cantonese";
-        if (code === "zh-TW") return "Traditional Chinese";
-        if (code === "zh-CN") return "Simplified Chinese";
-        if (code === "ms-MY") return "Malay";
-        if (code === "ta-IN") return "Tamil";
-        return "English";
+    function currentLang() {
+        return LANGUAGES[state.selectedLang];
     }
 
-    function getSysPrompt() {
-        var locInfo = currentStreet ? ("\nDriver current location: " + currentStreet + (gpsPos ? " (GPS:" + gpsPos.lat.toFixed(5) + "," + gpsPos.lng.toFixed(5) + ")" : "")) : "";
-        var modeInfo = "\nTransport mode: " + transportMode + ". Routing preference: " + routingMode + ".";
-        return [
-            "You are Ninja Co-Pilot, AI assistant for Ninja Van drivers in Singapore." + locInfo + modeInfo,
-            "Reply only in " + getPreferredReplyLanguage() + ". Under 60 words. Action first.",
-            "For navigation requests, ALWAYS include:",
-            "ADDRESS: full Singapore address with street name and postal code if known",
-            "PLACE: short place name",
-            "If it is a nearby business like restaurant, mall, hotel, toilet, petrol station or MRT, choose the nearest reasonable match based on driver GPS."
-        ].join("\n");
+    function isCantoneseMode() {
+        return currentLang().ai === "Cantonese";
     }
-
-    function getOcrPrompt() {
-        return [
-            "Extract Singapore parcel or street information.",
-            "Return JSON ONLY.",
-            '{"address":"full visible address or best visible address","unit":"unit/block or null","postal":"postal code or null","recipient":"name or null","sender":"sender or null","phone":"phone or null","place":"place name or null","language":"detected language","confidence":"high/medium/low"}'
-        ].join("\n");
-    }
-
-    function getLiveCamPrompt() {
-        return [
-            "Analyze this Singapore live street or parcel image.",
-            "Return exactly:",
-            "ADDRESS: full Singapore address with street and postal code if visible",
-            "PLACE: short place name",
-            "NOTE: short action guidance",
-            "If uncertain, return ADDRESS: UNKNOWN"
-        ].join("\n");
-    }
-
-    var CHIPS = ["Nearest petrol station", "Nearest toilet", "Nearest MRT", "Cannot find address", "Traffic jam"];
 
     function uiText(key) {
+        var ai = currentLang().ai;
+
+        var zh = {
+            ready: "准备好",
+            pick_language: "选择语言",
+            tap_mic_once: "按一下 🎙️",
+            scan_label: "扫描包裹标签来读取电话号码",
+            ask_route: "输入目的地或说出附近地点",
+            rain_popup_note: "如果目的地下雨，会自动弹出延误通知",
+            route_starting: "🗺 现在开始导航...",
+            route_not_found: "找不到路线。",
+            notify_arrival: "📩 快到了，要通知客户吗？",
+            eta_about: "预计大约 ",
+            eta_minutes: " 分钟内到",
+            close: "关闭",
+            rain_near_dest: "☔ 目的地附近下雨，要通知客户延迟吗？",
+            detected_weather: "检测到目的地天气：",
+            about_5_min: "还有大约五分钟到，要通知客户吗？",
+            raining_prompt: "目的地附近正在下雨，要通知客户可能会稍微延迟吗？",
+            arrived: "已经到达目的地。",
+            route_notif: "前方大约 ",
+            meters: " 米，",
+            customer_phone_saved: "客户号码已保存：",
+            invalid_phone: "电话号码无效。",
+            weather_unknown: "下雨",
+            processing: "处理中...",
+            mic_waiting: "免提模式已开启，正在持续听取...",
+            tap_once_to_enable: "浏览器限制：请先按一次麦克风启用免提模式。",
+            gps_needed: "请先开启 GPS。",
+            nearby_failed: "找不到附近地点。",
+            listening_on: "免提麦克风已开启。",
+            listening_off: "免提麦克风已关闭。",
+            route_updated: "路线已更新。",
+            eta_alert: "预计五分钟内到达。",
+            scan_error: "扫描失败。"
+        };
+
+        var yue = {
+            ready: "準備好",
+            pick_language: "揀語言",
+            tap_mic_once: "撳一下 🎙️",
+            scan_label: "掃描包裹標籤讀取電話號碼",
+            ask_route: "輸入目的地或者講附近地點",
+            rain_popup_note: "如果目的地下雨，會自動彈出延誤通知",
+            route_starting: "🗺 而家開始導航...",
+            route_not_found: "搵唔到路線。",
+            notify_arrival: "📩 就快到，要通知客戶嗎？",
+            eta_about: "預計大約 ",
+            eta_minutes: " 分鐘內到",
+            close: "關閉",
+            rain_near_dest: "☔ 目的地附近落雨，要通知客戶延遲嗎？",
+            detected_weather: "檢測到目的地天氣：",
+            about_5_min: "仲有大約五分鐘到，要通知客戶嗎？",
+            raining_prompt: "目的地附近正喺落雨，要通知客戶可能會遲少少嗎？",
+            arrived: "已經到咗目的地。",
+            route_notif: "前面大約 ",
+            meters: " 米，",
+            customer_phone_saved: "客戶電話已保存：",
+            invalid_phone: "電話號碼無效。",
+            weather_unknown: "落雨",
+            processing: "處理中...",
+            mic_waiting: "免提模式已開，持續聽緊...",
+            tap_once_to_enable: "瀏覽器限制：請先撳一次咪高峰啟用免提模式。",
+            gps_needed: "請先開 GPS。",
+            nearby_failed: "搵唔到附近地點。",
+            listening_on: "免提咪已開。",
+            listening_off: "免提咪已關。",
+            route_updated: "路線已更新。",
+            eta_alert: "預計五分鐘內到。",
+            scan_error: "掃描失敗。"
+        };
+
         var en = {
             ready: "Ready",
             pick_language: "Pick language",
             tap_mic_once: "Tap 🎙️ once",
-            scan_label: "Scan parcel label",
+            scan_label: "Scan parcel label to capture phone",
             ask_route: "Ask for a route",
-            rain_popup_note: "Rain delay popup appears automatically if destination is raining",
-            route_starting: "Getting directions...",
+            rain_popup_note: "Rain delay popup will appear automatically if destination is raining",
+            route_starting: "🗺 Getting directions...",
             route_not_found: "Route not found.",
+            notify_arrival: "📩 Near destination. Notify customer?",
+            eta_about: "Estimated arrival in about ",
+            eta_minutes: " minutes",
+            close: "Close",
+            rain_near_dest: "☔ Rain near destination. Send delay notice to customer?",
+            detected_weather: "Detected destination weather: ",
             about_5_min: "About 5 minutes to arrival. Notify customer?",
-            raining_prompt: "It is raining near the destination. Send a delay notice?",
+            raining_prompt: "It is raining near the destination. Send a delay notice to the customer?",
             arrived: "You have arrived.",
             route_notif: "In ",
             meters: " meters, ",
             customer_phone_saved: "Customer phone saved: ",
             invalid_phone: "Invalid phone number.",
             weather_unknown: "rain",
-            processing: "Processing..."
+            processing: "Processing...",
+            mic_waiting: "Hands-free mode is on. Listening continuously...",
+            tap_once_to_enable: "Browser rule: tap the mic once first to enable hands-free mode.",
+            gps_needed: "Please turn on GPS first.",
+            nearby_failed: "Could not find a nearby place.",
+            listening_on: "Hands-free mic is on.",
+            listening_off: "Hands-free mic is off.",
+            route_updated: "Route updated.",
+            eta_alert: "Estimated arrival within 5 minutes.",
+            scan_error: "Scan failed."
         };
-        return en[key] || key;
-    }
 
-    var TRANSPORT_LABELS = {
-        driving: "🚗 DRIVE",
-        walking: "🚶 WALK",
-        mrt: "🚇 MRT/BUS",
-        unknown: "🚗 --"
-    };
-
-    var TRANSPORT_CLASSES = {
-        driving: "mode-badge mode-driving",
-        walking: "mode-badge mode-walking",
-        mrt: "mode-badge mode-mrt",
-        unknown: "mode-badge mode-unknown"
-    };
-
-    function detectTransportMode(speedMs) {
-        if (speedMs === null || speedMs === undefined || speedMs < 0) return "unknown";
-        if (speedMs < 1.4) return "walking";
-        if (speedMs < 9) return "mrt";
-        return "driving";
-    }
-
-    function updateTransportMode(speedMs) {
-        var newMode = detectTransportMode(speedMs);
-        if (newMode === transportMode) return;
-        transportMode = newMode;
-
-        if (transportMode === "walking" || transportMode === "mrt") {
-            routingMode = "walking";
-            setMapModePill("walking");
-        } else if (transportMode === "driving") {
-            routingMode = "driving";
-            setMapModePill("driving");
-        }
-
-        modeBadge.className = TRANSPORT_CLASSES[transportMode] || TRANSPORT_CLASSES.unknown;
-        modeBadge.textContent = TRANSPORT_LABELS[transportMode] || TRANSPORT_LABELS.unknown;
-    }
-
-    var WEATHER_ICONS = {
-        sunny: "☀️", clear: "☀️", cloud: "⛅", overcast: "☁️",
-        rain: "🌧️", drizzle: "🌦️", shower: "🌧️", storm: "⛈️",
-        thunder: "⛈️", fog: "🌫️", mist: "🌫️", haze: "🌫️"
-    };
-
-    function weatherIconFor(desc) {
-        var d = String(desc || "").toLowerCase();
-        for (var k in WEATHER_ICONS) {
-            if (d.indexOf(k) >= 0) return WEATHER_ICONS[k];
-        }
-        return "🌤";
-    }
-
-    function updateWeatherWidget(data) {
-        if (!data || data.status === "weather_unavailable") return;
-        var desc = data.description || "";
-        var temp = data.temp_c != null ? Math.round(data.temp_c) + "°C" : "--°C";
-        wxIcon.textContent = weatherIconFor(desc);
-        wxTemp.textContent = temp;
-        wxDesc.textContent = desc || "--";
-        wxBadge.style.display = "flex";
-        wxBadge.className = "wx-badge" + (data.is_rain ? " rain" : "");
-    }
-
-    function maybeRefreshWeather() {
-        if (!gpsPos) return;
-        var now = Date.now();
-        if (now - lastWeatherRefresh < WEATHER_REFRESH_MS) return;
-        lastWeatherRefresh = now;
-        apiWeather(gpsPos.lat, gpsPos.lng, function (err, data) {
-            if (!err && data) updateWeatherWidget(data);
-        });
-    }
-
-    function initLeafletMap() {
-        if (leafletMap || !window.L) return;
-
-        leafletMap = L.map("liveMap", { zoomControl: false, attributionControl: true });
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            maxZoom: 19,
-            attribution: "© OSM"
-        }).addTo(leafletMap);
-
-        if (gpsPos) {
-            leafletMap.setView([gpsPos.lat, gpsPos.lng], 16);
-            addOrMoveDriverMarker(gpsPos.lat, gpsPos.lng);
-        }
-
-        mapZoomIn.addEventListener("click", function () { leafletMap.zoomIn(); });
-        mapZoomOut.addEventListener("click", function () { leafletMap.zoomOut(); });
-        mapCenter.addEventListener("click", function () {
-            if (gpsPos) leafletMap.setView([gpsPos.lat, gpsPos.lng], 16);
-        });
-        mapClose.addEventListener("click", function () { hideMap(); });
-    }
-
-    function driverIcon() {
-        return L.divIcon({
-            html: '<div style="width:14px;height:14px;border-radius:50%;background:#E31837;border:3px solid #fff;box-shadow:0 0 10px rgba(227,24,55,0.9)"></div>',
-            iconSize: [14,14], iconAnchor: [7,7], className: ""
-        });
-    }
-
-    function destIcon() {
-        return L.divIcon({
-            html: '<div style="font-size:22px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.6))">📦</div>',
-            iconSize: [22,22], iconAnchor: [11,22], className: ""
-        });
-    }
-
-    function addOrMoveDriverMarker(lat, lng) {
-        if (!leafletMap || !window.L) return;
-        if (mapMarker) mapMarker.setLatLng([lat, lng]);
-        else mapMarker = L.marker([lat, lng], { icon: driverIcon() }).addTo(leafletMap);
-    }
-
-    function drawRouteOnMap(route) {
-        if (!leafletMap || !window.L || !route || !route.geometry || !route.geometry.coordinates) return;
-
-        if (routeLayer) { leafletMap.removeLayer(routeLayer); routeLayer = null; }
-        if (destMarker) { leafletMap.removeLayer(destMarker); destMarker = null; }
-
-        var coords = route.geometry.coordinates.map(function (c) { return [c[1], c[0]]; });
-        routeLayer = L.polyline(coords, { color: "#E31837", weight: 4, opacity: 0.85 }).addTo(leafletMap);
-
-        if (route.dest_lat != null && route.dest_lng != null) {
-            destMarker = L.marker([route.dest_lat, route.dest_lng], { icon: destIcon() }).addTo(leafletMap);
-        }
-
-        var bounds = routeLayer.getBounds();
-        if (bounds.isValid()) leafletMap.fitBounds(bounds, { padding: [30, 30] });
-    }
-
-    function clearRouteFromMap() {
-        if (!leafletMap) return;
-        if (routeLayer) { leafletMap.removeLayer(routeLayer); routeLayer = null; }
-        if (destMarker) { leafletMap.removeLayer(destMarker); destMarker = null; }
-    }
-
-    function showMap() {
-        if (!mapVisible) {
-            mapPanel.classList.remove("hidden");
-            mapVisible = true;
-            mapBtn.classList.add("on");
-            if (!leafletMap && window.L) setTimeout(initLeafletMap, 50);
-            else if (leafletMap) setTimeout(function () { leafletMap.invalidateSize(); }, 100);
-        }
-    }
-
-    function hideMap() {
-        mapPanel.classList.add("hidden");
-        mapVisible = false;
-        mapBtn.classList.remove("on");
-    }
-
-    function setMapModePill(mode) {
-        if (mode === "walking") {
-            mpDriving.classList.remove("active");
-            mpWalking.classList.add("active");
-        } else {
-            mpWalking.classList.remove("active");
-            mpDriving.classList.add("active");
-        }
-    }
-
-    function openLiveCam() {
-        if (camActive) return;
-        navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 1280 } }
-        }).then(function (stream) {
-            camStream = stream;
-            camVideo.srcObject = stream;
-            camOverlay.classList.add("active");
-            camActive = true;
-            camAiReply.textContent = "Tap Analyze to get AI assistance...";
-        }).catch(function (err) {
-            addBubble("assistant", "Camera access denied: " + err.message);
-        });
-    }
-
-    function closeLiveCam() {
-        camActive = false;
-        if (camAutoOn) toggleCamAuto();
-        if (camStream) {
-            camStream.getTracks().forEach(function (t) { t.stop(); });
-            camStream = null;
-        }
-        camVideo.srcObject = null;
-        camOverlay.classList.remove("active");
-    }
-
-    function captureCamFrame(cb) {
-        if (!camActive || !camVideo) { cb(null); return; }
-        var canvas = document.createElement("canvas");
-        canvas.width = camVideo.videoWidth || 960;
-        canvas.height = camVideo.videoHeight || 720;
-        var ctx = canvas.getContext("2d");
-        ctx.drawImage(camVideo, 0, 0, canvas.width, canvas.height);
-
-        var q = 0.85;
-        var b64 = canvas.toDataURL("image/jpeg", q);
-        while (b64.length * 0.75 > MAX_BYTES && q > 0.3) {
-            q -= 0.1;
-            b64 = canvas.toDataURL("image/jpeg", q);
-        }
-        cb(b64.split(",")[1]);
-    }
-
-    function analyzeCamera() {
-        if (!camActive) return;
-        camStatus.textContent = "🔍 Analyzing...";
-        captureCamFrame(function (base64) {
-            if (!base64) { camStatus.textContent = "Camera not ready"; return; }
-            apiScanCam(base64, getLiveCamPrompt(), function (err, reply) {
-                if (err) {
-                    camAiReply.textContent = "Error: " + err;
-                    camStatus.textContent = "Analysis failed";
-                    return;
-                }
-
-                camAiReply.textContent = reply || "(No response)";
-                camStatus.textContent = "📹 LIVE — " + new Date().toLocaleTimeString();
-
-                if (reply && !busy) {
-                    addBubble("assistant", "📹 " + reply);
-                    detectLang(reply);
-                    speak(reply);
-                }
-
-                var m = String(reply || "").match(/ADDRESS:\s*(.+)/i);
-                if (m && m[1] && m[1].trim() && m[1].trim().toUpperCase() !== "UNKNOWN") {
-                    var camAddr = m[1].trim();
-                    scannedAddr = camAddr;
-                    stopLiveNavigation();
-                    addBubble("assistant", "🧭 Camera found destination: " + camAddr);
-                    fetchRoute(camAddr, true, function (routeErr, route) {
-                        if (!routeErr && route && route.steps && route.steps.length) {
-                            showRouteSteps(route);
-                            startLiveNavigation(route);
-                        } else {
-                            addBubble("assistant", uiText("route_not_found"));
-                        }
-                    });
-                }
-            });
-        });
-    }
-
-    function toggleCamAuto() {
-        camAutoOn = !camAutoOn;
-        if (camAutoOn) {
-            camAutoToggle.textContent = "🔄 Auto every 8s: ON";
-            camAutoToggle.classList.add("on");
-            analyzeCamera();
-            camAutoInterval = setInterval(analyzeCamera, 8000);
-        } else {
-            camAutoToggle.textContent = "🔄 Auto every 8s: OFF";
-            camAutoToggle.classList.remove("on");
-            clearInterval(camAutoInterval);
-            camAutoInterval = null;
-        }
+        var map;
+        if (ai === "Chinese Simplified" || ai === "Chinese Traditional") map = zh;
+        else if (ai === "Cantonese") map = yue;
+        else map = en;
+        return map[key] || en[key] || key;
     }
 
     function normalizeCantoneseText(text) {
         var t = String(text || "").trim();
         if (!t) return t;
-        return t
-            .replace(/现在/g, "而家")
-            .replace(/这里/g, "呢度")
-            .replace(/左转/g, "左轉")
-            .replace(/右转/g, "右轉")
-            .replace(/直走/g, "直行");
-    }
-
-    function tuneReplyByLanguage(text) {
-        var t = String(text || "");
-        if (isCantoneseMode()) return normalizeCantoneseText(t);
+        var replacements = [
+            [/最近的/g, "最近嘅"], [/附近的/g, "附近嘅"], [/现在/g, "而家"], [/位于/g, "喺"],
+            [/左转/g, "左轉"], [/右转/g, "右轉"], [/到达/g, "到咗"], [/厕所/g, "洗手間"],
+            [/正在/g, "而家正喺"]
+        ];
+        replacements.forEach(function (pair) { t = t.replace(pair[0], pair[1]); });
         return t;
     }
 
-    function sanitizePhone(raw) {
-        var s = String(raw || "").replace(/[^\d+]/g, "");
-        if (!s) return "";
-        if (s.indexOf("+") === 0) return s;
-        if (s.length === 8) return "65" + s;
-        return s;
+    function tuneReplyByLanguage(text) {
+        return isCantoneseMode() ? normalizeCantoneseText(text) : String(text || "");
     }
 
-    function setCustomerPhone(raw) {
-        var clean = sanitizePhone(raw);
-        if (!clean) return false;
-        customerPhone = clean;
-        return true;
+    function esc(s) {
+        var d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
     }
 
-    function getCustomerPhoneForSms() { return customerPhone.replace(/^\+/, ""); }
-    function getCustomerPhoneForWhatsApp() { return customerPhone.replace(/^\+/, ""); }
-
-    function getArrivalMessage() {
-        return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
+    function removeEl(id) {
+        var el = document.getElementById(id);
+        if (el) el.remove();
     }
 
-    function getRainDelayMessage() {
-        return "Hello, due to rain near your destination, I may arrive slightly later than expected. Thank you for your patience.";
+    function scrollDown() {
+        chatEl.scrollTop = chatEl.scrollHeight;
     }
-
-    function openSms(phone, message) {
-        var p = String(phone || "");
-        var body = encodeURIComponent(message || "");
-        var url = isIOS ? "sms:" + p + "&body=" + body : "sms:" + p + "?body=" + body;
-        window.location.href = url;
-    }
-
-    function openWhatsApp(phone, message) {
-        var p = String(phone || "").replace(/[^\d]/g, "");
-        var text = encodeURIComponent(message || "");
-        window.open("https://wa.me/" + p + "?text=" + text, "_blank");
-    }
-
-    function fireAutoWhatsApp(phone, msg) {
-        var p = String(phone || "").replace(/[^\d]/g, "");
-        var text = encodeURIComponent(msg || "");
-        if (!p) return false;
-        try { window.location.href = "whatsapp://send?phone=" + p + "&text=" + text; } catch (e) {}
-        setTimeout(function () {
-            try { window.open("https://wa.me/" + p + "?text=" + text, "_blank"); } catch (e) {}
-        }, 1200);
-        return true;
-    }
-
-    function autoSendArrivalWhatsApp() {
-        if (arrivalAutoSent) return;
-        if (!customerPhone) return;
-        var ok = fireAutoWhatsApp(getCustomerPhoneForWhatsApp(), getArrivalMessage());
-        if (ok) {
-            arrivalAutoSent = true;
-            addBubble("assistant", "✅ Auto WhatsApp opened: arriving in about 5 minutes.");
-        }
-    }
-
-    function autoSendRainWhatsApp() {
-        if (rainAutoSent) return;
-        if (!customerPhone) return;
-        var ok = fireAutoWhatsApp(getCustomerPhoneForWhatsApp(), getRainDelayMessage());
-        if (ok) {
-            rainAutoSent = true;
-            addBubble("assistant", "🌧️ Auto WhatsApp opened: rain delay notice.");
-        }
-    }
-
-    function unlockSpeech() {
-        if (!window.speechSynthesis || speechUnlocked) return;
-        try {
-            var u = new SpeechSynthesisUtterance(" ");
-            u.volume = 0;
-            u.onend = u.onerror = function () { speechUnlocked = true; };
-            window.speechSynthesis.speak(u);
-            window.speechSynthesis.cancel();
-            speechUnlocked = true;
-        } catch(e) {}
-    }
-
-    function pickVoiceByTargets(targets) {
-        if (!window.speechSynthesis) return null;
-        var voices = window.speechSynthesis.getVoices() || [];
-        if (!voices.length) return null;
-        return voices.find(function (v) { return targets.some(function (t) { return (v.lang || "").toLowerCase() === t.toLowerCase(); }); })
-            || voices.find(function (v) { return targets.some(function (t) { return (v.lang || "").toLowerCase().indexOf(t.toLowerCase()) === 0; }); })
-            || null;
-    }
-
-    function stripEmojis(t) {
-        return String(t || "").replace(/[\u{1F000}-\u{1FFFF}]/gu, "").replace(/[\u{2600}-\u{27BF}]/gu, "").trim();
-    }
-
-    function detectLang(text) {
-        var t = String(text || "");
-        var code = currentLang().code;
-        if (code === "zh-HK" || code === "zh-TW" || code === "zh-CN") { lastDetectedLang = code; return; }
-        if (/[\u4e00-\u9fff]/.test(t)) { lastDetectedLang = "zh-CN"; return; }
-        lastDetectedLang = "en";
-    }
-
-    function speak(text, onDone) {
-        if (!window.speechSynthesis || !text) { if (onDone) onDone(); return; }
-        try {
-            window.speechSynthesis.cancel();
-            clearInterval(ttsTimer);
-            var cleanText = stripEmojis(tuneReplyByLanguage(text));
-            if (!cleanText) { if (onDone) onDone(); return; }
-
-            var langKey = lastDetectedLang || currentLang().code || "en";
-            var targets = LANG_TTS[langKey] || LANG_TTS.en;
-            var chosenVoice = pickVoiceByTargets(targets) || pickVoiceByTargets(LANG_TTS.en);
-
-            var u = new SpeechSynthesisUtterance(cleanText);
-            u.rate = isCantoneseMode() ? 0.9 : 0.95;
-            u.pitch = 1;
-            u.volume = 1;
-            if (chosenVoice) {
-                u.voice = chosenVoice;
-                u.lang = chosenVoice.lang || currentLang().code;
-            } else {
-                u.lang = currentLang().code;
-            }
-
-            u.onstart = function () { isSpeaking = true; sbEl.style.display = "flex"; };
-            u.onend = u.onerror = function () {
-                isSpeaking = false;
-                sbEl.style.display = "none";
-                clearInterval(ttsTimer);
-                if (onDone) onDone();
-            };
-
-            window.speechSynthesis.speak(u);
-            try { window.speechSynthesis.resume(); } catch (e) {}
-            ttsTimer = setInterval(function () {
-                try { window.speechSynthesis.resume(); } catch (e) {}
-            }, 2000);
-        } catch (e) {
-            isSpeaking = false;
-            sbEl.style.display = "none";
-            clearInterval(ttsTimer);
-            if (onDone) onDone();
-        }
-    }
-
-    function stopSpeak() {
-        if (window.speechSynthesis) {
-            try { window.speechSynthesis.cancel(); } catch (e) {}
-        }
-        isSpeaking = false;
-        sbEl.style.display = "none";
-        clearInterval(ttsTimer);
-    }
-
-    function renderLangBar() {
-        langBar.innerHTML = "";
-        LANGUAGES.forEach(function (lang, i) {
-            var btn = document.createElement("button");
-            btn.className = "lang-btn" + (i === selectedLang ? " active" : "");
-            btn.textContent = lang.flag + " " + lang.label;
-            btn.addEventListener("click", function () {
-                unlockSpeech();
-                selectedLang = i;
-                syncReplyLanguageToSelection();
-                renderLangBar();
-                micLabel.textContent = "MIC • " + lang.flag + " " + lang.ai;
-                addBubble("assistant", "🌐 " + lang.flag + " " + lang.ai);
-            });
-            langBar.appendChild(btn);
-        });
-    }
-
-    function compressImage(file, cb) {
-        var reader = new FileReader();
-        reader.onload = function (e) {
-            var img = new Image();
-            img.onload = function () {
-                var w = img.width, h = img.height;
-                if (w > MAX_DIM || h > MAX_DIM) {
-                    var r = Math.min(MAX_DIM / w, MAX_DIM / h);
-                    w = Math.round(w * r);
-                    h = Math.round(h * r);
-                }
-                var c = document.createElement("canvas");
-                c.width = w;
-                c.height = h;
-                c.getContext("2d").drawImage(img, 0, 0, w, h);
-                var q = 0.88, b64 = c.toDataURL("image/jpeg", q);
-                while (b64.length * 0.75 > MAX_BYTES && q > 0.3) {
-                    q -= 0.1;
-                    b64 = c.toDataURL("image/jpeg", q);
-                }
-                cb(null, { base64: b64.split(",")[1], preview: b64, w: w, h: h, kb: Math.round((b64.length * 3) / 4 / 1024) });
-            };
-            img.onerror = function () { cb("Failed"); };
-            img.src = e.target.result;
-        };
-        reader.onerror = function () { cb("Failed"); };
-        reader.readAsDataURL(file);
-    }
-
-    function apiChat(text, cb) {
-        fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system: getSysPrompt(), messages: [{ role: "user", content: text }] })
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-        .catch(function (e) { cb(e.message); });
-    }
-
-    function apiScan(base64, cb) {
-        fetch("/api/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system: getSysPrompt(), image_base64: base64, ocr_prompt: getOcrPrompt() })
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-        .catch(function (e) { cb(e.message); });
-    }
-
-    function apiScanCam(base64, prompt, cb) {
-        fetch("/api/scan", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ system: getSysPrompt(), image_base64: base64, ocr_prompt: prompt })
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
-        .catch(function (e) { cb(e.message); });
-    }
-
-    function apiTranscribe(audioBase64, cb) {
-        fetch("/api/transcribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ audio_base64: audioBase64, language: currentLang().code })
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (d) { cb(d.error ? String(d.error) : null, d.text || ""); })
-        .catch(function (e) { cb(e.message); });
-    }
-
-    function apiWeather(lat, lng, cb) {
-        fetch("/api/weather?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng))
-            .then(function (r) { return r.json(); })
-            .then(function (d) { cb(null, d); })
-            .catch(function (e) { cb(e.message); });
-    }
-
-    function toggleMic() {
-        unlockSpeech();
-        if (micActive) { stopMic(); return; }
-        micActive = true;
-        syncReplyLanguageToSelection();
-        voiceBtn.classList.add("active");
-        voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
-        micBar.classList.add("on");
-        micLabel.textContent = "MIC • " + currentLang().flag + " " + currentLang().ai;
-        if (useRecorder) startRecording();
-        else startSR();
-    }
-
-    function stopMic() {
-        micActive = false;
-        isListening = false;
-        voiceBtn.classList.remove("active");
-        voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
-        micBar.classList.remove("on");
-        clearTimeout(recordTimer);
-        if (recognition) try { recognition.stop(); } catch (e) {}
-        if (mediaRecorder && mediaRecorder.state !== "inactive") try { mediaRecorder.stop(); } catch (e) {}
-    }
-
-    function startSR() {
-        if (!micActive || isListening || isSpeaking || busy) return;
-        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { startRecording(); return; }
-
-        recognition = new SR();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = currentLang().code;
-
-        recognition.onresult = function (e) {
-            for (var i = e.resultIndex; i < e.results.length; i++) {
-                if (e.results[i].isFinal) {
-                    var text = e.results[i][0].transcript.trim();
-                    if (text) {
-                        stopListeningSR();
-                        sendText(text);
-                    }
-                }
-            }
-        };
-
-        recognition.onerror = function () {
-            isListening = false;
-            if (micActive && !isSpeaking && !busy) setTimeout(function () { if (micActive) startSR(); }, 1000);
-        };
-
-        recognition.onend = function () {
-            isListening = false;
-            if (micActive && !isSpeaking && !busy) setTimeout(function () { if (micActive && !isListening) startSR(); }, 300);
-        };
-
-        try {
-            recognition.start();
-            isListening = true;
-        } catch (e) {
-            setTimeout(function () { if (micActive) startSR(); }, 500);
-        }
-    }
-
-    function stopListeningSR() {
-        if (recognition) try { recognition.stop(); } catch (e) {}
-        isListening = false;
-    }
-
-    function startRecording() {
-        if (!micActive || isListening || isSpeaking || busy) return;
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
-            audioChunks = [];
-            try { mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" }); }
-            catch (e) { mediaRecorder = new MediaRecorder(stream); }
-
-            mediaRecorder.ondataavailable = function (e) { if (e.data.size > 0) audioChunks.push(e.data); };
-            mediaRecorder.onstop = function () {
-                clearTimeout(recordTimer);
-                stream.getTracks().forEach(function (t) { t.stop(); });
-                if (!micActive || audioChunks.length === 0) return;
-
-                var blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-                if (blob.size < 2500) { isListening = false; if (micActive && !busy) startRecording(); return; }
-
-                var reader = new FileReader();
-                reader.onload = function () {
-                    var base64 = reader.result.split(",")[1];
-                    isListening = false;
-                    showProc();
-                    apiTranscribe(base64, function (err, text) {
-                        hideProc();
-                        if (err || !String(text || "").trim()) {
-                            if (err) addBubble("assistant", "Voice input unavailable: " + err);
-                            if (micActive && !busy) startRecording();
-                            return;
-                        }
-                        sendText(text.trim());
-                    });
-                };
-                reader.readAsDataURL(blob);
-            };
-
-            mediaRecorder.start();
-            isListening = true;
-            recordTimer = setTimeout(function () {
-                if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
-            }, 2500);
-        }).catch(function () {
-            addBubble("assistant", "Mic access denied. Please allow microphone permission.");
-            stopMic();
-        });
-    }
-
-    function restartMicAfterReply() {
-        if (!micActive) return;
-        setTimeout(function () {
-            if (!micActive || isSpeaking || busy || isListening) return;
-            if (useRecorder) startRecording();
-            else startSR();
-        }, 500);
-    }
-
-    var lastGeocodeAt = 0, lastGeocodeLat = 0, lastGeocodeLng = 0;
-
-    function metersBetween(lat1, lng1, lat2, lng2) {
-        if (lat2 == null || lng2 == null) return 999999;
-        var R = 6371000, toRad = function (d) { return d * Math.PI / 180; };
-        var dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
-        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-            Math.sin(dLng / 2) * Math.sin(dLng / 2);
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    }
-
-    function initGPS() {
-        if (!navigator.geolocation) { locAddr.textContent = "GPS not available"; return; }
-
-        navigator.geolocation.watchPosition(function (p) {
-            var acc = p.coords.accuracy || 999;
-            gpsPos = { lat: p.coords.latitude, lng: p.coords.longitude, acc: acc };
-            locBar.classList.remove("no-gps");
-
-            updateAccuracyDisplay(acc, p.coords.latitude, p.coords.longitude);
-
-            var now = Date.now();
-            var moved = metersBetween(p.coords.latitude, p.coords.longitude, lastGeocodeLat, lastGeocodeLng);
-            if (moved > 15 || now - lastGeocodeAt > 20000) {
-                lastGeocodeAt = now;
-                lastGeocodeLat = p.coords.latitude;
-                lastGeocodeLng = p.coords.longitude;
-                reverseGeocode(p.coords.latitude, p.coords.longitude);
-            }
-
-            updateLiveNavigation();
-            updateTransportMode(p.coords.speed);
-
-            if (leafletMap) addOrMoveDriverMarker(gpsPos.lat, gpsPos.lng);
-            maybeRefreshWeather();
-        }, function () {
-            locBar.classList.add("no-gps");
-            locAddr.textContent = "GPS searching...";
-        }, { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 });
-    }
-
-    function updateAccuracyDisplay(acc, lat, lng) {
-        var accEl = document.getElementById("locAcc");
-        var pillEl = document.getElementById("locAccPill");
-        var coordEl = document.getElementById("locCoords");
-
-        accEl.style.display = "flex";
-        var accRound = Math.round(acc);
-        pillEl.textContent = "±" + accRound + "m";
-        pillEl.className = "loc-acc-pill";
-        if (accRound <= 20) pillEl.classList.add("acc-good");
-        else if (accRound <= 60) pillEl.classList.add("acc-ok");
-        else pillEl.classList.add("acc-poor");
-
-        coordEl.textContent = lat.toFixed(5) + ", " + lng.toFixed(5);
-    }
-
-    function reverseGeocode(lat, lng) {
-        fetch("/api/geocode?lat=" + lat + "&lng=" + lng)
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                currentStreet = d.address || "";
-                locAddr.textContent = currentStreet || lat.toFixed(5) + "," + lng.toFixed(5);
-                var srcEl = document.getElementById("locSource");
-                if (d.source === "onemap") {
-                    srcEl.textContent = "● ONEMAP SG";
-                    srcEl.style.color = "rgba(76,175,80,0.7)";
-                } else if (d.source === "nominatim") {
-                    srcEl.textContent = "● OSM";
-                    srcEl.style.color = "rgba(255,193,7,0.6)";
-                } else {
-                    srcEl.textContent = "";
-                }
-            })
-            .catch(function () {});
-    }
-
-    function searchPlace(text, cb) {
-        if (!gpsPos) { cb("No GPS"); return; }
-        fetch("/api/place-search?q=" + encodeURIComponent(text) + "&lat=" + encodeURIComponent(gpsPos.lat) + "&lng=" + encodeURIComponent(gpsPos.lng))
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-                if (d.error || !d.lat) cb(d.error || "Place not found");
-                else cb(null, d);
-            })
-            .catch(function (e) { cb(e.message); });
-    }
-
-    function fetchRoute(destAddr, usePlaces, cb) {
-        if (!gpsPos) { cb("No GPS"); return; }
-
-        var url = "/api/address-to-latlng?address=" + encodeURIComponent(destAddr) +
-            "&user_lat=" + encodeURIComponent(gpsPos.lat) +
-            "&user_lng=" + encodeURIComponent(gpsPos.lng) +
-            "&use_places=" + (usePlaces ? "1" : "0");
-
-        fetch(url)
-            .then(function (r) { return r.json(); })
-            .then(function (g) {
-                if (!g.lat) { cb("Address not found"); return; }
-                var mode = routingMode;
-                fetch("/api/route?from_lat=" + gpsPos.lat + "&from_lng=" + gpsPos.lng +
-                      "&to_lat=" + g.lat + "&to_lng=" + g.lng + "&mode=" + mode)
-                    .then(function (r) { return r.json(); })
-                    .then(function (rt) {
-                        if (rt && !rt.error) {
-                            rt.dest_lat = g.lat;
-                            rt.dest_lng = g.lng;
-                            rt.dest_display = g.display || destAddr;
-                            rt.place_name = g.place_name || destAddr;
-                            rt.geocode_source = g.source || "";
-                        }
-                        cb((rt.error && !rt.steps.length) ? rt.error : null, rt);
-                    })
-                    .catch(function (e) { cb(e.message); });
-            })
-            .catch(function (e) { cb(e.message); });
-    }
-
-    function startLiveNavigation(route) {
-        if (!route || !route.steps || !route.steps.length) return;
-        activeRoute = route;
-        activeStepIndex = 0;
-        lastSpokenStep = -1;
-        navActive = true;
-        notifyShownForRoute = false;
-        arrivalPromptSpoken = false;
-        rainAlertShownForRoute = false;
-        currentWeatherInfo = null;
-        arrivalAutoSent = false;
-        rainAutoSent = false;
-
-        highlightActiveStep();
-        speakCurrentStepIfNeeded(true);
-
-        showMap();
-        if (leafletMap) {
-            setTimeout(function () {
-                drawRouteOnMap(route);
-                leafletMap.invalidateSize();
-            }, 200);
-        }
-
-        if (route.dest_lat != null && route.dest_lng != null) {
-            apiWeather(route.dest_lat, route.dest_lng, function (err, weatherData) {
-                if (!err && weatherData) currentWeatherInfo = weatherData;
-            });
-        }
-    }
-
-    function highlightActiveStep() {
-        if (!activeRoute || !activeRoute.steps) return;
-        activeRoute.steps.forEach(function (_, i) {
-            var el = document.getElementById("rs" + i);
-            if (el) el.style.background = i === activeStepIndex ? "rgba(227,24,55,0.18)" : "transparent";
-        });
-    }
-
-    function speakCurrentStepIfNeeded(force) {
-        if (!navActive || !activeRoute || !activeRoute.steps || activeStepIndex >= activeRoute.steps.length) return;
-        if (!force && lastSpokenStep === activeStepIndex) return;
-        var step = activeRoute.steps[activeStepIndex];
-        if (!step || !step.text) return;
-        lastSpokenStep = activeStepIndex;
-        detectLang(step.text);
-        speak(step.text);
-    }
-
-    function maybeShowArrivalNotify() {
-        if (!navActive || !activeRoute || notifyShownForRoute) return;
-        var secs = Number(activeRoute.total_duration || 0);
-        var meters = Number(activeRoute.total_distance || 0);
-
-        if ((secs > 0 && secs <= ETA_NOTIFY_SECONDS) || (meters > 0 && meters <= ETA_NOTIFY_METERS)) {
-            notifyShownForRoute = true;
-            if (!arrivalPromptSpoken) {
-                arrivalPromptSpoken = true;
-                speak(uiText("about_5_min"));
-            }
-            if (!arrivalAutoSent && customerPhone) {
-                setTimeout(function () { autoSendArrivalWhatsApp(); }, 1200);
-            }
-        }
-    }
-
-    function maybeShowRainAlert() {
-        if (!navActive || rainAlertShownForRoute) return;
-        if (!currentWeatherInfo || !currentWeatherInfo.is_rain) return;
-        rainAlertShownForRoute = true;
-        speak(uiText("raining_prompt"));
-        if (!rainAutoSent && customerPhone) {
-            setTimeout(function () { autoSendRainWhatsApp(); }, 1200);
-        }
-    }
-
-    function updateLiveNavigation() {
-        if (!navActive || !gpsPos || !activeRoute || !activeRoute.steps) return;
-        if (activeStepIndex >= activeRoute.steps.length) return;
-        if (!gpsPos.acc || gpsPos.acc > 35) return;
-
-        var now = Date.now();
-        if (now - lastGpsCheckAt < 1500) return;
-        lastGpsCheckAt = now;
-
-        var step = activeRoute.steps[activeStepIndex];
-        if (!step || step.lat == null || step.lng == null) return;
-        var dist = metersBetween(gpsPos.lat, gpsPos.lng, step.lat, step.lng);
-
-        if (dist <= 80 && lastSpokenStep !== activeStepIndex) {
-            var warnText = uiText("route_notif") + Math.round(dist) + uiText("meters") + step.text;
-            speak(warnText);
-            lastSpokenStep = activeStepIndex;
-            highlightActiveStep();
-            maybeShowArrivalNotify();
-            maybeShowRainAlert();
-            return;
-        }
-
-        if (dist <= Math.max(20, gpsPos.acc || 20)) {
-            activeStepIndex++;
-            highlightActiveStep();
-
-            var remainSecs = 0, remainMeters = 0;
-            for (var i = activeStepIndex; i < activeRoute.steps.length; i++) {
-                remainSecs += Number(activeRoute.steps[i].duration || 0);
-                remainMeters += Number(activeRoute.steps[i].distance || 0);
-            }
-            activeRoute.total_duration = remainSecs;
-            activeRoute.total_distance = remainMeters;
-
-            maybeShowArrivalNotify();
-            maybeShowRainAlert();
-
-            if (activeStepIndex < activeRoute.steps.length) {
-                lastSpokenStep = -1;
-                setTimeout(function () { speakCurrentStepIfNeeded(true); }, 500);
-            } else {
-                navActive = false;
-                clearRouteFromMap();
-                speak(uiText("arrived"));
-            }
-        }
-    }
-
-    function stopLiveNavigation() {
-        navActive = false;
-        activeRoute = null;
-        activeStepIndex = 0;
-        lastSpokenStep = -1;
-        notifyShownForRoute = false;
-        arrivalPromptSpoken = false;
-        rainAlertShownForRoute = false;
-        currentWeatherInfo = null;
-        arrivalAutoSent = false;
-        rainAutoSent = false;
-        clearRouteFromMap();
-    }
-
-    function getIcon(t, m) {
-        if (t === "depart") return "🚀";
-        if (t === "arrive") return "🏁";
-        if (t === "roundabout" || t === "rotary") return "🔄";
-        if (m && m.indexOf("left") >= 0) return "⬅️";
-        if (m && m.indexOf("right") >= 0) return "➡️";
-        return "⬆️";
-    }
-
-    function showRouteSteps(route) {
-        removeEl("routeCard");
-        if (!route || !route.steps || !route.steps.length) return;
-
-        var modeLabel = routingMode === "walking" ? "🚶 Walk" : "🚗 Drive";
-        var sourceLabel = route.geocode_source ? (" • " + route.geocode_source.toUpperCase()) : "";
-
-        var div = document.createElement("div");
-        div.id = "routeCard";
-
-        var html = '<div style="background:rgba(76,175,80,0.1);border:1px solid rgba(76,175,80,0.2);border-radius:12px;padding:12px;margin:8px 0">';
-        html += '<div style="color:#4CAF50;font-size:10px;font-weight:600;letter-spacing:1px;margin-bottom:6px">🛣 ' + esc(route.summary || "") + ' ' + modeLabel + sourceLabel + '</div>';
-        if (route.place_name) {
-            html += '<div style="color:rgba(255,255,255,0.7);font-size:11px;margin-bottom:8px">📍 ' + esc(route.place_name) + '</div>';
-        }
-
-        route.steps.forEach(function (s, i) {
-            html += '<div id="rs' + i + '" style="display:flex;gap:8px;padding:6px;border-radius:8px;margin-bottom:2px;">';
-            html += '<span style="font-size:16px;width:22px;text-align:center;flex-shrink:0">' + getIcon(s.type, s.modifier) + '</span>';
-            html += '<div style="color:#fff;font-size:12px">' + esc(tuneReplyByLanguage(s.text)) + '</div></div>';
-        });
-
-        html += '<div style="display:flex;gap:6px;margin-top:8px">';
-        html += '<button id="rSpk" style="flex:1;padding:10px;border-radius:8px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">🔊 Repeat Step</button>';
-        html += '</div></div>';
-
-        div.innerHTML = html;
-        chatEl.appendChild(div);
-        scrollDown();
-
-        document.getElementById("rSpk").addEventListener("click", function () {
-            unlockSpeech();
-            speakCurrentStepIfNeeded(true);
-        });
-    }
-
-    function showDeliveryCard(parsed) {
-        removeEl("deliveryCard");
-        var div = document.createElement("div");
-        div.id = "deliveryCard";
-        var html = "";
-
-        if (parsed.unit) {
-            html += '<div class="unit-card"><div class="unit-label">UNIT / BLOCK</div><div class="unit-num">' + esc(parsed.unit) + '</div><div class="unit-addr">' + esc(parsed.address) + '</div>';
-            if (parsed.language) html += '<div class="unit-lang">🌐 ' + esc(parsed.language) + '</div>';
-            html += '</div>';
-        } else {
-            html += '<div class="unit-card"><div class="unit-label">DELIVERY ADDRESS</div><div class="unit-num" style="font-size:20px">' + esc(parsed.address) + '</div>';
-            if (parsed.postal) html += '<div class="unit-addr">📮 ' + esc(parsed.postal) + '</div>';
-            html += '</div>';
-        }
-
-        if (parsed.recipient) html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">👤 ' + esc(parsed.recipient) + '</div>';
-        if (parsed.phone) html += '<div style="color:rgba(255,255,255,0.6);font-size:12px;padding:4px 0">📞 ' + esc(parsed.phone) + '</div>';
-        if (parsed.confidence) html += '<div style="color:rgba(255,255,255,0.45);font-size:11px;padding:2px 0">Confidence: ' + esc(parsed.confidence) + '</div>';
-
-        div.innerHTML = html;
-        chatEl.appendChild(div);
-        scrollDown();
-    }
-
-    function esc(s) { var d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
-    function scrollDown() { chatEl.scrollTop = chatEl.scrollHeight; }
-    function removeEl(id) { var el = document.getElementById(id); if (el) el.remove(); }
 
     function addBubble(role, text, imgUrl) {
         var row = document.createElement("div");
@@ -1178,6 +273,7 @@
     }
 
     function showProc() {
+        removeEl("proc");
         var el = document.createElement("div");
         el.id = "proc";
         el.className = "proc";
@@ -1186,29 +282,587 @@
         scrollDown();
     }
 
-    function hideProc() { removeEl("proc"); }
-    function updateSend() { sendBtn.classList.toggle("on", !!inp.value.trim()); }
+    function hideProc() {
+        removeEl("proc");
+    }
+
+    function updateSend() {
+        sendBtn.classList.toggle("on", !!inp.value.trim());
+    }
+
+    function cleanReplyForSpeech(reply) {
+        return tuneReplyByLanguage(
+            String(reply || "")
+                .replace(/ADDRESS:\s*.*$/im, "")
+                .replace(/PLACE:\s*.*$/im, "")
+                .replace(/\n+/g, ". ")
+                .trim()
+        );
+    }
+
+    function getSysPrompt() {
+        var locInfo = state.currentStreet
+            ? "\nDriver current location: " + state.currentStreet + (state.gpsPos ? " (GPS:" + state.gpsPos.lat.toFixed(5) + "," + state.gpsPos.lng.toFixed(5) + ")" : "")
+            : "";
+
+        var replyRule;
+        if (isCantoneseMode()) {
+            replyRule = [
+                "IMPORTANT: Reply ONLY in Cantonese.",
+                "Use Hong Kong Cantonese grammar and wording.",
+                "Use Traditional Chinese characters.",
+                "Never reply in Mandarin."
+            ].join(" ");
+        } else {
+            replyRule = "LANGUAGE: Reply ONLY in " + currentLang().ai + ".";
+        }
+
+        return [
+            "You are Ninja Co-Pilot, AI assistant for Ninja Van drivers in Singapore." + locInfo,
+            replyRule,
+            "STRICT RULES:",
+            "- Maximum 15 words.",
+            "- GPS navigation style.",
+            "- Action first.",
+            "NEVER ask questions.",
+            "NEVER give multiple options.",
+            "For nearby place requests choose the nearest place using GPS.",
+            "For navigation replies always include:",
+            "ADDRESS: full Singapore address with postal code",
+            "PLACE: short place name"
+        ].join("\n");
+    }
+
+    function getOcrPrompt() {
+        return [
+            "Extract Singapore delivery information from this parcel image.",
+            "Important: text may be handwritten, rotated, tilted, messy, partially hidden, or upside down.",
+            "Try all reading orientations.",
+            "Singapore formats:",
+            "- Phone numbers are 8 digits",
+            "- Postal codes are 6 digits",
+            "- Blocks may look like 'Blk 123 Street Name'",
+            "If you see 'PH' it means phone number.",
+            "Return JSON ONLY. No markdown. No backticks.",
+            '{"address":"full address or best guess","unit":"unit/block or null","postal":"6 digit postal code or null","recipient":"name or null","sender":"sender or null","phone":"8 digit phone only digits","place":"place name or null","confidence":"high/medium/low"}'
+        ].join("\n");
+    }
 
     function extractPhoneFromText(text) {
         var m = String(text || "").match(/(?:\+?65[-\s]?)?(\d{8})/);
         return m && m[1] ? m[1] : null;
     }
 
+    function sanitizePhone(raw) {
+        var s = String(raw || "").replace(/[^\d+]/g, "");
+        if (!s) return "";
+        if (s.indexOf("+") === 0) return s;
+        if (s.length === 8) return "65" + s;
+        return s;
+    }
+
+    function setCustomerPhone(raw) {
+        var clean = sanitizePhone(raw);
+        if (!clean) return false;
+        state.customerPhone = clean;
+        return true;
+    }
+
+    function getCustomerPhoneForSms() {
+        return state.customerPhone.replace(/^\+/, "");
+    }
+
+    function getCustomerPhoneForWhatsApp() {
+        return state.customerPhone.replace(/^\+/, "");
+    }
+
+    function getArrivalMessage() {
+        return "Hello, I will arrive in about 5 minutes. Please be ready to receive the parcel. Thank you.";
+    }
+
+    function getRainDelayMessage() {
+        return "Hello, due to rain and traffic conditions near your destination, your parcel may be slightly delayed. Thank you for your patience.";
+    }
+
+    function openSms(phone, message) {
+        var p = String(phone || "");
+        var body = encodeURIComponent(message || "");
+        var url = /iphone|ipad|ipod/.test(navigator.userAgent.toLowerCase())
+            ? "sms:" + p + "&body=" + body
+            : "sms:" + p + "?body=" + body;
+        window.location.href = url;
+    }
+
+    function openWhatsApp(phone, message) {
+        var p = String(phone || "").replace(/[^\d]/g, "");
+        var text = encodeURIComponent(message || "");
+        window.open("https://wa.me/" + p + "?text=" + text, "_blank");
+    }
+
+    function removeArrivalCard() { removeEl("arrivalNotifyCard"); }
+    function removeRainCard() { removeEl("rainDelayCard"); }
+
+    function showArrivalNotifyCard() {
+        removeArrivalCard();
+
+        var mins = state.activeRoute ? Math.max(1, Math.round((state.activeRoute.total_duration || 0) / 60)) : 5;
+        var msg = getArrivalMessage();
+        var title = uiText("notify_arrival");
+        var etaText = uiText("eta_about") + mins + uiText("eta_minutes");
+
+        var div = document.createElement("div");
+        div.id = "arrivalNotifyCard";
+        div.innerHTML =
+            '<div style="background:rgba(227,24,55,0.10);border:1px solid rgba(227,24,55,0.28);border-radius:14px;padding:12px;margin:8px 0;">' +
+                '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(etaText) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(state.customerPhone) + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<button id="arrivalSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
+                    '<button id="arrivalWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    '<button id="arrivalCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
+                '</div>' +
+            '</div>';
+
+        chatEl.appendChild(div);
+        scrollDown();
+
+        document.getElementById("arrivalSmsBtn").onclick = function () { openSms(getCustomerPhoneForSms(), msg); };
+        document.getElementById("arrivalWaBtn").onclick = function () { openWhatsApp(getCustomerPhoneForWhatsApp(), msg); };
+        document.getElementById("arrivalCloseBtn").onclick = function () { removeArrivalCard(); };
+    }
+
+    function showRainDelayCard(weatherInfo) {
+        removeRainCard();
+
+        var msg = getRainDelayMessage();
+        var title = uiText("rain_near_dest");
+        var detail = uiText("detected_weather") + (weatherInfo && weatherInfo.description ? weatherInfo.description : uiText("weather_unknown"));
+
+        var div = document.createElement("div");
+        div.id = "rainDelayCard";
+        div.innerHTML =
+            '<div style="background:rgba(30,144,255,0.10);border:1px solid rgba(30,144,255,0.30);border-radius:14px;padding:12px;margin:8px 0;">' +
+                '<div style="color:#fff;font-size:13px;font-weight:700;margin-bottom:6px;">' + esc(title) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">' + esc(detail) + '</div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:6px;">Phone: <span style="color:#fff;font-weight:700;">' + esc(state.customerPhone) + '</span></div>' +
+                '<div style="color:rgba(255,255,255,0.75);font-size:12px;margin-bottom:10px;">' + esc(msg) + '</div>' +
+                '<div style="display:flex;gap:8px;">' +
+                    '<button id="rainSmsBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#E31837;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">SMS</button>' +
+                    '<button id="rainWaBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:#25D366;color:#fff;font-size:12px;font-weight:700;cursor:pointer;">WhatsApp</button>' +
+                    '<button id="rainCloseBtn" style="flex:1;padding:10px;border-radius:10px;border:none;background:rgba(255,255,255,0.12);color:#fff;font-size:12px;font-weight:700;cursor:pointer;">' + esc(uiText("close")) + '</button>' +
+                '</div>' +
+            '</div>';
+
+        chatEl.appendChild(div);
+        scrollDown();
+
+        document.getElementById("rainSmsBtn").onclick = function () { openSms(getCustomerPhoneForSms(), msg); };
+        document.getElementById("rainWaBtn").onclick = function () { openWhatsApp(getCustomerPhoneForWhatsApp(), msg); };
+        document.getElementById("rainCloseBtn").onclick = function () { removeRainCard(); };
+    }
+
+    function apiChat(text, cb) {
+        fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system: getSysPrompt(),
+                messages: [{ role: "user", content: text }]
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function apiScan(base64, cb) {
+        fetch("/api/scan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                system: getSysPrompt(),
+                image_base64: base64,
+                ocr_prompt: getOcrPrompt()
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.reply || ""); })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function apiTranscribe(audioBase64, cb) {
+        fetch("/api/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                audio_base64: audioBase64,
+                language: currentLang().code
+            })
+        })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(d.error ? String(d.error) : null, d.text || ""); })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function apiWeather(lat, lng, cb) {
+        fetch("/api/weather?lat=" + encodeURIComponent(lat) + "&lng=" + encodeURIComponent(lng))
+        .then(function (r) { return r.json(); })
+        .then(function (d) { cb(null, d); })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function apiPlaceSearch(q, cb) {
+        if (!state.gpsPos) {
+            cb("No GPS");
+            return;
+        }
+
+        fetch("/api/place-search?q=" + encodeURIComponent(q) + "&lat=" + encodeURIComponent(state.gpsPos.lat) + "&lng=" + encodeURIComponent(state.gpsPos.lng))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.error || d.lat == null || d.lng == null) cb(d.error || "Place not found");
+            else cb(null, d);
+        })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function startSR() {
+        if (!state.micActive || state.isListening || state.isSpeaking || state.busy) return;
+        if (!SpeechRecognitionCtor) {
+            useRecorder = true;
+            startRecording();
+            return;
+        }
+
+        state.recognition = new SpeechRecognitionCtor();
+        state.recognition.continuous = true;
+        state.recognition.interimResults = false;
+        state.recognition.lang = currentLang().code;
+
+        state.recognition.onresult = function (e) {
+            for (var i = e.resultIndex; i < e.results.length; i++) {
+                if (e.results[i].isFinal) {
+                    var text = e.results[i][0].transcript.trim();
+                    if (text) {
+                        stopListeningSR();
+                        sendText(text);
+                        return;
+                    }
+                }
+            }
+        };
+
+        state.recognition.onerror = function () {
+            state.isListening = false;
+            if (state.micActive && !state.isSpeaking && !state.busy) {
+                setTimeout(function () { if (state.micActive) startSR(); }, 900);
+            }
+        };
+
+        state.recognition.onend = function () {
+            state.isListening = false;
+            if (state.micActive && !state.isSpeaking && !state.busy) {
+                setTimeout(function () { if (state.micActive && !state.isListening) startSR(); }, 300);
+            }
+        };
+
+        try {
+            state.recognition.start();
+            state.isListening = true;
+            micLabel.textContent = uiText("mic_waiting");
+        } catch (e) {
+            setTimeout(function () { if (state.micActive) startSR(); }, 500);
+        }
+    }
+
+    function stopListeningSR() {
+        if (state.recognition) {
+            try { state.recognition.stop(); } catch (e) {}
+        }
+        state.isListening = false;
+    }
+
+    function getSupportedMimeType() {
+        var types = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"];
+        for (var i = 0; i < types.length; i++) {
+            if (window.MediaRecorder && MediaRecorder.isTypeSupported(types[i])) return types[i];
+        }
+        return "";
+    }
+
+    function startRecording() {
+        if (!state.micActive || state.isListening || state.isSpeaking || state.busy) return;
+
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
+            state.audioChunks = [];
+
+            var options = {};
+            var mime = getSupportedMimeType();
+            if (mime) options.mimeType = mime;
+
+            try { state.mediaRecorder = new MediaRecorder(stream, options); }
+            catch (e) { state.mediaRecorder = new MediaRecorder(stream); }
+
+            state.mediaRecorder.ondataavailable = function (e) {
+                if (e.data.size > 0) state.audioChunks.push(e.data);
+            };
+
+            state.mediaRecorder.onstop = function () {
+                clearTimeout(state.recordTimer);
+                stream.getTracks().forEach(function (t) { t.stop(); });
+
+                if (!state.micActive || state.audioChunks.length === 0) return;
+
+                var blob = new Blob(state.audioChunks, { type: state.mediaRecorder.mimeType || "audio/webm" });
+                if (blob.size < 2500) {
+                    state.isListening = false;
+                    if (state.micActive && !state.busy) startRecording();
+                    return;
+                }
+
+                var reader = new FileReader();
+                reader.onload = function () {
+                    var base64 = reader.result.split(",")[1];
+                    state.isListening = false;
+                    showProc();
+                    apiTranscribe(base64, function (err, text) {
+                        hideProc();
+                        if (err || !String(text || "").trim()) {
+                            if (state.micActive && !state.busy) startRecording();
+                            return;
+                        }
+                        sendText(String(text).trim());
+                    });
+                };
+                reader.readAsDataURL(blob);
+            };
+
+            state.mediaRecorder.start();
+            state.isListening = true;
+            micLabel.textContent = uiText("mic_waiting");
+
+            state.recordTimer = setTimeout(function () {
+                if (state.mediaRecorder && state.mediaRecorder.state === "recording") {
+                    state.mediaRecorder.stop();
+                }
+            }, RECORDER_SEGMENT_MS);
+
+        }).catch(function () {
+            addBubble("assistant", "Mic access denied. Please allow microphone permission.");
+            stopMic();
+        });
+    }
+
+    function toggleMic() {
+        unlockSpeech();
+
+        if (state.micActive) {
+            stopMic();
+            addBubble("assistant", uiText("listening_off"));
+            return;
+        }
+
+        state.micActive = true;
+        voiceBtn.classList.add("active");
+        voiceBtn.querySelector("span:last-child").textContent = "MIC ON";
+        micBar.classList.add("on");
+        micLabel.textContent = "MIC • " + currentLang().flag + " " + currentLang().ai;
+        addBubble("assistant", uiText("listening_on"));
+
+        if (useRecorder) startRecording();
+        else startSR();
+    }
+
+    function stopMic() {
+        state.micActive = false;
+        state.isListening = false;
+
+        voiceBtn.classList.remove("active");
+        voiceBtn.querySelector("span:last-child").textContent = "TAP TO SPEAK";
+        micBar.classList.remove("on");
+
+        clearTimeout(state.recordTimer);
+
+        if (state.recognition) {
+            try { state.recognition.stop(); } catch (e) {}
+        }
+        if (state.mediaRecorder && state.mediaRecorder.state !== "inactive") {
+            try { state.mediaRecorder.stop(); } catch (e) {}
+        }
+    }
+
+    function restartMicAfterReply() {
+        if (!AUTO_HANDS_FREE) return;
+        if (!state.micActive) return;
+
+        setTimeout(function () {
+            if (!state.micActive || state.isSpeaking || state.busy || state.isListening) return;
+            if (useRecorder) startRecording();
+            else startSR();
+        }, 500);
+    }
+
+    function detectNearbyIntent(text) {
+        var low = String(text || "").toLowerCase();
+        var intents = [
+            { keys: ["nearest hotel", "hotel near me", "nearby hotel"], q: "hotel" },
+            { keys: ["nearest mrt", "mrt near me", "nearby mrt"], q: "mrt station" },
+            { keys: ["nearest toilet", "toilet near me", "nearby toilet", "restroom near me"], q: "toilet" },
+            { keys: ["nearest petrol station", "petrol near me", "gas station near me", "nearby petrol station"], q: "petrol station" },
+            { keys: ["nearest mall", "mall near me", "nearby mall", "shopping mall near me"], q: "shopping mall" },
+            { keys: ["nearest restaurant", "restaurant near me", "food near me", "nearby restaurant"], q: "restaurant" }
+        ];
+
+        for (var i = 0; i < intents.length; i++) {
+            for (var j = 0; j < intents[i].keys.length; j++) {
+                if (low.indexOf(intents[i].keys[j]) >= 0) return intents[i].q;
+            }
+        }
+        return null;
+    }
+
+    function routeToPlace(place) {
+        if (!state.gpsPos) {
+            addBubble("assistant", uiText("gps_needed"));
+            return;
+        }
+
+        state.scannedAddr = place.address || place.name || "";
+        stopLiveNavigation();
+        addBubble("assistant", "PLACE: " + (place.name || "") + "\nADDRESS: " + (place.address || ""));
+        addBubble("assistant", uiText("route_starting"));
+
+        fetch("/api/route?from_lat=" + encodeURIComponent(state.gpsPos.lat) + "&from_lng=" + encodeURIComponent(state.gpsPos.lng) + "&to_lat=" + encodeURIComponent(place.lat) + "&to_lng=" + encodeURIComponent(place.lng))
+        .then(function (r) { return r.json(); })
+        .then(function (route) {
+            if (!route || route.error || !route.steps || !route.steps.length) {
+                addBubble("assistant", uiText("route_not_found"));
+                restartMicAfterReply();
+                return;
+            }
+            route.dest_lat = place.lat;
+            route.dest_lng = place.lng;
+            route.dest_display = place.address || place.name || "";
+            showRouteSteps(route);
+            startLiveNavigation(route);
+        })
+        .catch(function () {
+            addBubble("assistant", uiText("route_not_found"));
+            restartMicAfterReply();
+        });
+    }
+
+    function handleNearbyIntent(text) {
+        var q = detectNearbyIntent(text);
+        if (!q) return false;
+
+        if (!state.gpsPos) {
+            addBubble("assistant", uiText("gps_needed"));
+            return true;
+        }
+
+        state.busy = true;
+        showProc();
+
+        apiPlaceSearch(q, function (err, place) {
+            hideProc();
+            state.busy = false;
+
+            if (err || !place) {
+                addBubble("assistant", uiText("nearby_failed"));
+                restartMicAfterReply();
+                return;
+            }
+
+            speak(place.name || q, function () {
+                routeToPlace(place);
+            });
+        });
+
+        return true;
+    }
+
+    function fetchRoute(destAddr, cb) {
+        if (!state.gpsPos) {
+            cb("No GPS");
+            return;
+        }
+
+        fetch(
+            "/api/address-to-latlng?address=" + encodeURIComponent(destAddr) +
+            "&user_lat=" + encodeURIComponent(state.gpsPos.lat) +
+            "&user_lng=" + encodeURIComponent(state.gpsPos.lng) +
+            "&use_places=1"
+        )
+        .then(function (r) { return r.json(); })
+        .then(function (g) {
+            if (!g.lat) {
+                cb("Address not found");
+                return;
+            }
+
+            fetch("/api/route?from_lat=" + encodeURIComponent(state.gpsPos.lat) + "&from_lng=" + encodeURIComponent(state.gpsPos.lng) + "&to_lat=" + encodeURIComponent(g.lat) + "&to_lng=" + encodeURIComponent(g.lng))
+            .then(function (r) { return r.json(); })
+            .then(function (rt) {
+                if (rt && !rt.error) {
+                    rt.dest_lat = g.lat;
+                    rt.dest_lng = g.lng;
+                    rt.dest_display = g.display || destAddr;
+                }
+                cb(rt.error && !rt.steps.length ? rt.error : null, rt);
+            })
+            .catch(function (e) { cb(e.message); });
+        })
+        .catch(function (e) { cb(e.message); });
+    }
+
+    function handleVoiceShortcuts(rawText) {
+        var t = String(rawText || "").trim().toLowerCase();
+
+        if (t === "mic off" || t === "stop listening") {
+            stopMic();
+            addBubble("assistant", uiText("listening_off"));
+            return true;
+        }
+
+        if (t === "mic on" || t === "start listening") {
+            if (!state.micActive) toggleMic();
+            return true;
+        }
+
+        if (t.indexOf("repeat step") >= 0 || t.indexOf("say again") >= 0) {
+            speakCurrentStepIfNeeded(true);
+            return true;
+        }
+
+        if (t.indexOf("stop navigation") >= 0) {
+            stopLiveNavigation();
+            addBubble("assistant", uiText("route_updated"));
+            return true;
+        }
+
+        return false;
+    }
+
     function sendText(text) {
-        if (!text || !text.trim() || busy) return;
-        syncReplyLanguageToSelection();
+        if (!text || !text.trim() || state.busy) return;
+
         var rawText = text.trim();
+        if (handleVoiceShortcuts(rawText)) return;
 
         var phoneMatch = rawText.match(/set customer phone\s+([+\d\s-]+)/i);
         if (phoneMatch && phoneMatch[1]) {
             if (setCustomerPhone(phoneMatch[1])) {
                 addBubble("user", rawText);
-                addBubble("assistant", uiText("customer_phone_saved") + customerPhone);
+                addBubble("assistant", uiText("customer_phone_saved") + state.customerPhone);
             } else {
                 addBubble("assistant", uiText("invalid_phone"));
             }
             inp.value = "";
             updateSend();
+            restartMicAfterReply();
             return;
         }
 
@@ -1218,128 +872,115 @@
         addBubble("user", rawText);
         inp.value = "";
         updateSend();
-        busy = true;
+
+        if (handleNearbyIntent(rawText)) return;
+
+        state.busy = true;
         showProc();
 
-        // place search shortcut for common POI
-        var lower = rawText.toLowerCase();
-        var looksLikePlace = /nearest|haidilao|hotel|mrt|toilet|petrol|mall|restaurant|station|clinic|hospital|bank|coffee|7-11|seven eleven/.test(lower);
-
-        if (looksLikePlace && gpsPos) {
-            searchPlace(rawText, function (placeErr, place) {
-                if (!placeErr && place && place.lat) {
-                    hideProc();
-                    busy = false;
-                    scannedAddr = place.address || place.name;
-                    addBubble("assistant", "📍 " + (place.name || "Place found") + "\nADDRESS: " + (place.address || ""));
-                    fetchRoute(place.name || place.address, true, function (routeErr, route) {
-                        if (!routeErr && route && route.steps && route.steps.length) {
-                            showRouteSteps(route);
-                            startLiveNavigation(route);
-                        } else {
-                            addBubble("assistant", uiText("route_not_found"));
-                        }
-                    });
-                    return;
-                }
-
-                apiChat(rawText, handleChatReply);
-            });
-        } else {
-            apiChat(rawText, handleChatReply);
+        var aiText = rawText;
+        if (state.gpsPos) {
+            aiText += "\n[DRIVER_GPS: " + state.gpsPos.lat.toFixed(6) + "," + state.gpsPos.lng.toFixed(6) + "]";
         }
 
-        function handleChatReply(err, reply) {
+        apiChat(aiText, function (err, reply) {
             hideProc();
-            busy = false;
+            state.busy = false;
 
             if (err) {
                 addBubble("assistant", "Error: " + err);
-                setTimeout(function () { speak("Error. " + err, restartMicAfterReply); }, 150);
+                speak("Error. " + err);
                 return;
             }
 
             reply = tuneReplyByLanguage(reply);
-            detectLang(reply);
             addBubble("assistant", reply);
 
             var addrMatch = reply.match(/ADDRESS:\s*(.+)/i);
             if (addrMatch && addrMatch[1]) {
                 var navAddr = addrMatch[1].trim();
-                scannedAddr = navAddr;
+                state.scannedAddr = navAddr;
                 stopLiveNavigation();
 
-                setTimeout(function () {
-                    speak(reply.replace(/ADDRESS:\s*.*$/im, "").trim(), function () {
-                        addBubble("assistant", uiText("route_starting"));
-                        fetchRoute(navAddr, true, function (routeErr, route) {
-                            if (!routeErr && route && route.steps && route.steps.length) {
-                                showRouteSteps(route);
-                                startLiveNavigation(route);
-                            } else {
-                                addBubble("assistant", uiText("route_not_found"));
-                                restartMicAfterReply();
-                            }
-                        });
+                speak(cleanReplyForSpeech(reply), function () {
+                    addBubble("assistant", uiText("route_starting"));
+                    fetchRoute(navAddr, function (routeErr, route) {
+                        if (!routeErr && route && route.steps && route.steps.length) {
+                            showRouteSteps(route);
+                            startLiveNavigation(route);
+                        } else {
+                            addBubble("assistant", uiText("route_not_found"));
+                            restartMicAfterReply();
+                        }
                     });
-                }, 150);
+                });
             } else {
-                setTimeout(function () { speak(reply, restartMicAfterReply); }, 150);
+                speak(cleanReplyForSpeech(reply));
             }
-        }
+        });
     }
 
-    // =========================================================
-    // FIX: handleScan — clean speech, no JSON read-out
-    // =========================================================
     function handleScan(fileInput) {
         var file = fileInput.files && fileInput.files[0];
-        if (!file || busy) return;
-        busy = true;
-        syncReplyLanguageToSelection();
+        if (!file || state.busy) return;
 
-        compressImage(file, function (err, img) {
-            if (err) { addBubble("assistant", "Error: " + err); busy = false; return; }
-            addBubble("user", "📷 Scanned (" + img.w + "×" + img.h + ", " + img.kb + "KB)", img.preview);
-            showProc();
+        state.busy = true;
 
-            apiScan(img.base64, function (err2, reply) {
-                hideProc();
-                busy = false;
-                fileInput.value = "";
-
-                if (err2) {
-                    addBubble("assistant", "Error: " + err2);
-                    speak("Scan error.", restartMicAfterReply);
-                    return;
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var img = new Image();
+            img.onload = function () {
+                var w = img.width, h = img.height;
+                if (w > MAX_DIM || h > MAX_DIM) {
+                    var r = Math.min(MAX_DIM / w, MAX_DIM / h);
+                    w = Math.round(w * r);
+                    h = Math.round(h * r);
                 }
 
-                var parsed = null;
-                try { parsed = JSON.parse(reply.replace(/```json|```/g, "").trim()); } catch (e) {}
+                var c = document.createElement("canvas");
+                c.width = w;
+                c.height = h;
+                c.getContext("2d").drawImage(img, 0, 0, w, h);
 
-                if (parsed && parsed.phone) setCustomerPhone(parsed.phone);
+                var q = 0.8, b64 = c.toDataURL("image/jpeg", q);
+                while (b64.length * 0.75 > MAX_BYTES && q > 0.2) {
+                    q -= 0.1;
+                    b64 = c.toDataURL("image/jpeg", q);
+                }
 
-                if (parsed && parsed.address) {
-                    var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
-                    scannedAddr = fullAddr;
-                    stopLiveNavigation();
-                    showDeliveryCard(parsed);
+                addBubble("user", "📷 Scanned (" + w + "×" + h + ")", b64);
+                showProc();
 
-                    // FIX: Only speak the address, not unit label or JSON
-                    var voice = "";
-                    if (parsed.unit) {
-                        voice = "Unit " + parsed.unit + ". " + parsed.address;
-                    } else {
-                        voice = parsed.address;
-                        if (parsed.postal) voice += " " + parsed.postal;
+                apiScan(b64.split(",")[1], function (err2, reply) {
+                    hideProc();
+                    state.busy = false;
+                    fileInput.value = "";
+
+                    if (err2) {
+                        addBubble("assistant", "Error: " + err2);
+                        speak(uiText("scan_error"));
+                        return;
                     }
 
-                    detectLang(voice);
+                    var parsed = null;
+                    try {
+                        parsed = JSON.parse(reply.replace(/```json|```/g, "").trim());
+                    } catch (e) {}
 
-                    setTimeout(function () {
+                    if (parsed && parsed.phone) setCustomerPhone(parsed.phone);
+
+                    if (parsed && parsed.address) {
+                        var fullAddr = parsed.address + (parsed.postal ? " " + parsed.postal : "");
+                        state.scannedAddr = fullAddr;
+                        stopLiveNavigation();
+                        showDeliveryCard(parsed);
+
+                        var voice = parsed.unit ? "Unit " + parsed.unit + ". " + parsed.address : parsed.address;
+                        voice = tuneReplyByLanguage(voice);
+
                         speak(voice, function () {
                             addBubble("assistant", uiText("route_starting"));
-                            fetchRoute(fullAddr, false, function (re, route) {
+                            fetchRoute(fullAddr, function (re, route) {
                                 if (!re && route && route.steps && route.steps.length) {
                                     showRouteSteps(route);
                                     startLiveNavigation(route);
@@ -1349,86 +990,123 @@
                                 }
                             });
                         });
-                    }, 150);
-
-                } else {
-                    // FIX: All fields null — just say no address, don't speak raw JSON
-                    addBubble("assistant", "No address detected in this image.");
-                    speak("No address found.", restartMicAfterReply);
-                }
-            });
-        });
+                    } else {
+                        reply = tuneReplyByLanguage(reply);
+                        addBubble("assistant", reply);
+                        speak(reply);
+                    }
+                });
+            };
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
     }
 
     renderLangBar();
-    syncReplyLanguageToSelection();
 
     CHIPS.forEach(function (c) {
         var btn = document.createElement("button");
         btn.className = "chip";
         btn.textContent = c;
-        btn.addEventListener("click", function () {
+        btn.onclick = function () {
             unlockSpeech();
             sendText(c);
-        });
+        };
         chipsEl.appendChild(btn);
     });
 
-    sendBtn.addEventListener("click", function () { unlockSpeech(); sendText(inp.value); });
+    sendBtn.onclick = function () {
+        unlockSpeech();
+        sendText(inp.value);
+    };
+
     inp.addEventListener("input", updateSend);
+
     inp.addEventListener("keydown", function (e) {
         if (e.key === "Enter") {
+            e.preventDefault();
             unlockSpeech();
             sendText(inp.value);
         }
     });
 
-    voiceBtn.addEventListener("click", function () { unlockSpeech(); toggleMic(); });
-    scanBtn.addEventListener("click", function () { unlockSpeech(); cameraIn.click(); });
-    photoBtn.addEventListener("click", function () { unlockSpeech(); photoIn.click(); });
-    cameraIn.addEventListener("change", function () { handleScan(cameraIn); });
-    photoIn.addEventListener("change", function () { handleScan(photoIn); });
-
-    mapBtn.addEventListener("click", function () {
+    voiceBtn.onclick = function () {
         unlockSpeech();
-        if (mapVisible) hideMap();
-        else {
-            showMap();
-            setTimeout(initLeafletMap, 80);
+        toggleMic();
+    };
+
+    scanBtn.onclick = function () {
+        unlockSpeech();
+        cameraIn.click();
+    };
+
+    photoBtn.onclick = function () {
+        unlockSpeech();
+        photoIn.click();
+    };
+
+    cameraIn.onchange = function () { handleScan(cameraIn); };
+    photoIn.onchange = function () { handleScan(photoIn); };
+
+    navBtnEl.onclick = function () {
+        unlockSpeech();
+        if (state.scannedAddr) {
+            stopLiveNavigation();
+            fetchRoute(state.scannedAddr, function (e, r) {
+                if (!e && r && r.steps && r.steps.length) {
+                    showRouteSteps(r);
+                    startLiveNavigation(r);
+                } else {
+                    addBubble("assistant", uiText("route_not_found"));
+                }
+            });
         }
-    });
+    };
 
-    mpDriving.addEventListener("click", function () {
-        routingMode = "driving";
-        setMapModePill("driving");
-    });
+    stopBtnEl.onclick = stopSpeak;
 
-    mpWalking.addEventListener("click", function () {
-        routingMode = "walking";
-        setMapModePill("walking");
-    });
+    if (window.speechSynthesis) {
+        window.speechSynthesis.onvoiceschanged = function () {
+            try { window.speechSynthesis.getVoices(); } catch (e) {}
+        };
+    }
 
-    liveCamBtn.addEventListener("click", function () {
-        unlockSpeech();
-        openLiveCam();
-    });
+    function initGPS() {
+        if (!navigator.geolocation) {
+            locAddr.textContent = "GPS not available";
+            return;
+        }
 
-    camSnap.addEventListener("click", analyzeCamera);
-    camCloseBtn.addEventListener("click", closeLiveCam);
-    camAutoToggle.addEventListener("click", toggleCamAuto);
-
-    if (stopBtnEl) stopBtnEl.addEventListener("click", stopSpeak);
+        navigator.geolocation.watchPosition(
+            function (p) {
+                state.gpsPos = {
+                    lat: p.coords.latitude,
+                    lng: p.coords.longitude,
+                    acc: p.coords.accuracy
+                };
+                locBar.classList.remove("no-gps");
+                reverseGeocode(state.gpsPos.lat, state.gpsPos.lng);
+                updateLiveNavigation();
+            },
+            function () {
+                locBar.classList.add("no-gps");
+                locAddr.textContent = "GPS searching...";
+            },
+            { enableHighAccuracy: true, maximumAge: 4000, timeout: 10000 }
+        );
+    }
 
     initGPS();
 
     var mode = useRecorder ? "(recording mode)" : "(voice mode)";
-    addBubble("assistant",
+    addBubble(
+        "assistant",
         uiText("ready") + " " + mode + ".\n" +
         "1️⃣ " + uiText("pick_language") + "\n" +
         "2️⃣ " + uiText("tap_mic_once") + "\n" +
         "3️⃣ " + uiText("scan_label") + "\n" +
         "4️⃣ " + uiText("ask_route") + "\n" +
         "5️⃣ " + uiText("rain_popup_note") + "\n" +
-        "6️⃣ Tap 🗺️ for live map • 📹 for live cam AI"
+        "6️⃣ " + uiText("tap_once_to_enable")
     );
 })();
